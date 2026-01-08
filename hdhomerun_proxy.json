@@ -1,0 +1,17 @@
+{
+  "hdhomerun_port": 65001,
+  "tcp_port": 65001,
+  "udp_read_timeout_ms": 500,
+  "udp_read_buffer_size": 4096,
+  "reconnect_interval_seconds": 3,
+  "debug": false,
+  "app": {
+    "bind_address": "0.0.0.0",
+    "direct_hdhomerun_ip": "192.168.1.50"
+  },
+  "tuner": {
+    "app_proxy_host": "10.10.10.9",
+    "direct_mode": false,
+    "direct_hdhomerun_ip": "10.10.10.50"
+  }
+}
