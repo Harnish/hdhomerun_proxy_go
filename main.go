@@ -78,6 +78,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  -config string\n\tPath to JSON config file\n")
 	fmt.Fprintf(os.Stderr, "  -debug\n\tEnable debug logging\n")
 	fmt.Fprintf(os.Stderr, "  -template\n\tGenerate a template config file and exit\n")
+	fmt.Fprintf(os.Stderr, "\nNote: Tunarr backend can be enabled via config file (-config)\n")
+	fmt.Fprintf(os.Stderr, "Generate template with: %s -template\n", os.Args[0])
 }
 
 func runAppProxy(args []string, cfg *Config) {

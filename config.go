@@ -31,6 +31,15 @@ type Config struct {
 		DirectMode   bool   `json:"direct_mode"`
 		DirectHDHRIP string `json:"direct_hdhomerun_ip"`
 	} `json:"tuner"`
+
+	// Tunarr backend settings
+	Tunarr struct {
+		Enabled       bool   `json:"enabled"`
+		Host          string `json:"host"`
+		Port          int    `json:"port"`
+		UseTunarrOnly bool   `json:"use_tunarr_only"` // If true, only use Tunarr, ignore HDHR
+		HttpTimeout   int    `json:"http_timeout_seconds"`
+	} `json:"tunarr"`
 }
 
 // DefaultConfig returns a config with default values
@@ -88,6 +97,11 @@ func SaveConfigTemplate(filepath string) error {
 	template.Tuner.ProxyHost = "10.10.10.9"
 	template.Tuner.DirectMode = false
 	template.Tuner.DirectHDHRIP = "10.10.10.50"
+	template.Tunarr.Enabled = false
+	template.Tunarr.Host = "tunarr.local"
+	template.Tunarr.Port = 8000
+	template.Tunarr.UseTunarrOnly = false
+	template.Tunarr.HttpTimeout = 5
 
 	data, err := json.MarshalIndent(template, "", "  ")
 	if err != nil {

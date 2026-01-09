@@ -13,5 +13,12 @@
     "app_proxy_host": "10.10.10.9",
     "direct_mode": false,
     "direct_hdhomerun_ip": "10.10.10.50"
+  },
+  "tunarr": {
+    "enabled": false,
+    "host": "tunarr.local",
+    "port": 8000,
+    "use_tunarr_only": false,
+    "http_timeout_seconds": 5
   }
 }

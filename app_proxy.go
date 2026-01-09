@@ -12,10 +12,12 @@ import (
 
 // AppProxy acts like an HDHomeRun app
 type AppProxy struct {
-	codec        *MessageCodec
-	tcpTransport net.Conn
-	tcpMutex     sync.Mutex
-	directHDHRIP string // If set, listen for UDP broadcasts and proxy directly to this IP
+	codec         *MessageCodec
+	tcpTransport  net.Conn
+	tcpMutex      sync.Mutex
+	directHDHRIP  string         // If set, listen for UDP broadcasts and proxy directly to this IP
+	tunarr        *TunarrBackend // Optional Tunarr backend
+	useTunarrOnly bool           // If true, ignore HDHR and only use Tunarr
 }
 
 // NewAppProxy creates a new AppProxy
@@ -31,9 +33,23 @@ func NewAppProxy() *AppProxy {
 // cfg: configuration object for tuning parameters
 func (ap *AppProxy) Run(ctx context.Context, bindAddr, directIP string, cfg *Config) error {
 	ap.directHDHRIP = directIP
+	ap.useTunarrOnly = cfg.Tunarr.UseTunarrOnly
 
-	if directIP != "" {
-		// Direct mode: listen for UDP broadcasts and proxy to the HDHomeRun directly
+	// Initialize Tunarr backend if enabled
+	if cfg.Tunarr.Enabled {
+		ap.tunarr = NewTunarrBackend(cfg.Tunarr.Host, cfg.Tunarr.Port, cfg.Tunarr.HttpTimeout)
+		if ap.tunarr.IsAvailable(ctx) {
+			slog.Info("Tunarr backend available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
+		} else {
+			slog.Warn("Tunarr backend not available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
+			if cfg.Tunarr.UseTunarrOnly {
+				return fmt.Errorf("tunarr backend required but not available")
+			}
+		}
+	}
+
+	if directIP != "" || (ap.tunarr != nil && ap.useTunarrOnly) {
+		// Direct mode: listen for UDP broadcasts and proxy to the HDHomeRun/Tunarr directly
 		return ap.runDirectMode(ctx, bindAddr, cfg)
 	} else {
 		// Tuner proxy mode: listen for TCP connections from the tuner proxy
@@ -88,10 +104,62 @@ func (ap *AppProxy) runDirectMode(ctx context.Context, bindAddr string, cfg *Con
 		if n > 0 {
 			slog.Debug("Request received from app", "bytes", n, "source", remoteAddr.String())
 
-			// Forward the query directly to the HDHomeRun
-			go ap.forwardToDirectHDHR(buf[:n], remoteAddr, conn)
+			// Forward the query to HDHR/Tunarr backend
+			go ap.forwardToBackend(buf[:n], remoteAddr, conn, ctx)
 		}
 	}
+}
+
+// forwardToBackend sends a query to the HDHR or Tunarr backend and replies back to the app
+func (ap *AppProxy) forwardToBackend(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) {
+	// Try Tunarr first if available
+	if ap.tunarr != nil {
+		if ap.forwardToTunarr(queryData, appAddr, replyConn, ctx) {
+			return
+		}
+		// If Tunarr-only mode, don't fall back to HDHR
+		if ap.useTunarrOnly {
+			slog.Warn("Tunarr-only mode but Tunarr request failed")
+			return
+		}
+	}
+
+	// Fall back to direct HDHR if configured
+	if ap.directHDHRIP != "" {
+		ap.forwardToDirectHDHR(queryData, appAddr, replyConn)
+	}
+}
+
+// forwardToTunarr sends a request to Tunarr backend
+func (ap *AppProxy) forwardToTunarr(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) bool {
+	// Check if this is a discovery request
+	queryStr := string(queryData)
+	if queryStr == "TYPE: discover\r\n" || queryStr == "discover" {
+		// Get Tunarr device info
+		info, err := ap.tunarr.GetDiscoverInfo(ctx)
+		if err != nil {
+			slog.Error("Error getting Tunarr discovery info", "err", err)
+			return false
+		}
+
+		// Build HDHR-like discovery response from Tunarr
+		localIP, err := GetLocalIPForConnection(appAddr.IP.String() + ":65001")
+		if err != nil {
+			localIP = "127.0.0.1"
+		}
+
+		response := BuildHDHRDiscoveryPacket(info, ap.tunarr.port, localIP)
+		_, err = replyConn.WriteToUDP(response, appAddr)
+		if err != nil {
+			slog.Error("Error sending Tunarr discovery response to app", "err", err)
+			return false
+		}
+
+		slog.Debug("Tunarr discovery response sent", "bytes", len(response))
+		return true
+	}
+
+	return false
 }
 
 // forwardToDirectHDHR sends a query to the HDHomeRun and replies back to the app
