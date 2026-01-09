@@ -14,14 +14,17 @@ import (
 
 // TunerProxy acts like an HDHomeRun tuner
 type TunerProxy struct {
-	codec         *MessageCodec
-	tcpTransport  net.Conn
-	tcpMutex      sync.Mutex
-	udpTransport  *net.UDPConn
-	udpMutex      sync.Mutex
-	directHDHRIP  string         // If set, connect directly to HDHomeRun instead of app proxy
-	tunarr        *TunarrBackend // Optional Tunarr backend
-	useTunarrOnly bool           // If true, ignore HDHR and only use Tunarr
+	codec                  *MessageCodec
+	tcpTransport           net.Conn
+	tcpMutex               sync.Mutex
+	udpTransport           *net.UDPConn
+	udpMutex               sync.Mutex
+	directHDHRIP           string         // If set, connect directly to HDHomeRun instead of app proxy
+	tunarr                 *TunarrBackend // Optional Tunarr backend
+	useTunarrOnly          bool           // If true, ignore HDHR and only use Tunarr
+	activeConnectionsMutex sync.Mutex
+	activeUDPConnections   int // Number of active UDP connections
+	activeDialConnections  int // Number of active dial connections to HDHR/Tunarr
 }
 
 // NewTunerProxy creates a new TunerProxy
@@ -85,6 +88,11 @@ func (tp *TunerProxy) runDirectMode(ctx context.Context, cfg *Config) error {
 	tp.udpMutex.Unlock()
 
 	slog.Info("Tuner proxy listening for broadcasts (direct mode)", "bind_addr", bindAddr, "direct_hdhomerun_ip", tp.directHDHRIP)
+
+	// Start connection logging goroutine if configured
+	if cfg.LogActiveConnectionsInterval > 0 {
+		go tp.logActiveConnections(ctx, cfg.LogActiveConnectionsInterval)
+	}
 
 	buf := make([]byte, UDPReadBufferSize)
 
@@ -240,6 +248,11 @@ func (tp *TunerProxy) runTunerProxyMode(ctx context.Context, appProxyHost string
 	tp.udpMutex.Unlock()
 
 	slog.Info("Tuner proxy listening for broadcasts", "addr", bindAddr, "port", HDHomeRunDiscoveryUDPPort)
+
+	// Start connection logging goroutine if configured
+	if cfg.LogActiveConnectionsInterval > 0 {
+		go tp.logActiveConnections(ctx, cfg.LogActiveConnectionsInterval)
+	}
 
 	// Start UDP listener goroutine
 	go tp.handleUDPBroadcasts(ctx)
@@ -434,5 +447,25 @@ func (tp *TunerProxy) onMessageReceivedFromAppProxy(msg []byte) {
 	_, err = conn.Write(replyData)
 	if err != nil {
 		slog.Error("Error sending reply", "err", err)
+	}
+}
+
+// logActiveConnections periodically logs the number of active connections
+func (tp *TunerProxy) logActiveConnections(ctx context.Context, intervalSeconds int) {
+	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			tp.activeConnectionsMutex.Lock()
+			udpCount := tp.activeUDPConnections
+			dialCount := tp.activeDialConnections
+			tp.activeConnectionsMutex.Unlock()
+
+			slog.Info("TunerProxy active connections", "udp", udpCount, "dial", dialCount, "total", udpCount+dialCount)
+		}
 	}
 }

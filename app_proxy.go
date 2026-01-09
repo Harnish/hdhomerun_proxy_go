@@ -12,12 +12,15 @@ import (
 
 // AppProxy acts like an HDHomeRun app
 type AppProxy struct {
-	codec         *MessageCodec
-	tcpTransport  net.Conn
-	tcpMutex      sync.Mutex
-	directHDHRIP  string         // If set, listen for UDP broadcasts and proxy directly to this IP
-	tunarr        *TunarrBackend // Optional Tunarr backend
-	useTunarrOnly bool           // If true, ignore HDHR and only use Tunarr
+	codec                  *MessageCodec
+	tcpTransport           net.Conn
+	tcpMutex               sync.Mutex
+	directHDHRIP           string         // If set, listen for UDP broadcasts and proxy directly to this IP
+	tunarr                 *TunarrBackend // Optional Tunarr backend
+	useTunarrOnly          bool           // If true, ignore HDHR and only use Tunarr
+	activeConnectionsMutex sync.Mutex
+	activeUDPConnections   int // Number of active UDP connections
+	activeDialConnections  int // Number of active dial connections to HDHR/Tunarr
 }
 
 // NewAppProxy creates a new AppProxy
@@ -76,6 +79,11 @@ func (ap *AppProxy) runDirectMode(ctx context.Context, bindAddr string, cfg *Con
 	defer conn.Close()
 
 	slog.Info("App proxy listening for UDP broadcasts", "addr", addr, "direct_hdhomerun_ip", ap.directHDHRIP)
+
+	// Start connection logging goroutine if configured
+	if cfg.LogActiveConnectionsInterval > 0 {
+		go ap.logActiveConnections(ctx, cfg.LogActiveConnectionsInterval)
+	}
 
 	buf := make([]byte, UDPReadBufferSize)
 
@@ -385,5 +393,25 @@ func (ap *AppProxy) reply(sourceAddr []byte, sourcePort uint16, replyData []byte
 	if err != nil {
 		slog.Error("Error sending reply", "err", err)
 		ap.tcpTransport = nil
+	}
+}
+
+// logActiveConnections periodically logs the number of active connections
+func (ap *AppProxy) logActiveConnections(ctx context.Context, intervalSeconds int) {
+	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ap.activeConnectionsMutex.Lock()
+			udpCount := ap.activeUDPConnections
+			dialCount := ap.activeDialConnections
+			ap.activeConnectionsMutex.Unlock()
+
+			slog.Info("AppProxy active connections", "udp", udpCount, "dial", dialCount, "total", udpCount+dialCount)
+		}
 	}
 }

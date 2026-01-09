@@ -17,7 +17,8 @@ type Config struct {
 	ReconnectInterval int `json:"reconnect_interval_seconds"`
 
 	// Logging
-	Debug bool `json:"debug"`
+	Debug                        bool `json:"debug"`
+	LogActiveConnectionsInterval int  `json:"log_active_connections_interval_seconds"` // Log active connections at this interval (0 to disable)
 
 	// App proxy settings
 	App struct {
@@ -45,12 +46,13 @@ type Config struct {
 // DefaultConfig returns a config with default values
 func DefaultConfig() *Config {
 	return &Config{
-		HDHomeRunPort:     HDHomeRunDiscoveryUDPPort,
-		TCPPort:           TCPPort,
-		UDPReadTimeout:    UDPReadTimeout,
-		UDPReadBuffSize:   UDPReadBufferSize,
-		ReconnectInterval: ReconnectInterval,
-		Debug:             false,
+		HDHomeRunPort:                HDHomeRunDiscoveryUDPPort,
+		TCPPort:                      TCPPort,
+		UDPReadTimeout:               UDPReadTimeout,
+		UDPReadBuffSize:              UDPReadBufferSize,
+		ReconnectInterval:            ReconnectInterval,
+		Debug:                        false,
+		LogActiveConnectionsInterval: 0,
 	}
 }
 
@@ -84,12 +86,13 @@ func LoadConfig(filepath string) (*Config, error) {
 // SaveConfigTemplate saves a template config file for reference
 func SaveConfigTemplate(filepath string) error {
 	template := &Config{
-		HDHomeRunPort:     65001,
-		TCPPort:           65001,
-		UDPReadTimeout:    500,
-		UDPReadBuffSize:   4096,
-		ReconnectInterval: 3,
-		Debug:             false,
+		HDHomeRunPort:                65001,
+		TCPPort:                      65001,
+		UDPReadTimeout:               500,
+		UDPReadBuffSize:              4096,
+		ReconnectInterval:            3,
+		Debug:                        false,
+		LogActiveConnectionsInterval: 60, // Log every 60 seconds
 	}
 
 	template.App.BindAddress = "0.0.0.0"

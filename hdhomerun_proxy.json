@@ -5,19 +5,20 @@
   "udp_read_buffer_size": 4096,
   "reconnect_interval_seconds": 3,
   "debug": false,
+  "log_active_connections_interval_seconds": 60,
   "app": {
     "bind_address": "0.0.0.0",
-    "direct_hdhomerun_ip": "192.168.1.50"
+    "direct_hdhomerun_ip": "192.168.1.15"
   },
   "tuner": {
     "app_proxy_host": "10.10.10.9",
     "direct_mode": false,
-    "direct_hdhomerun_ip": "10.10.10.50"
+    "direct_hdhomerun_ip": "10.10.10.15"
   },
   "tunarr": {
-    "enabled": false,
-    "host": "tunarr.local",
-    "port": 8000,
+    "enabled": true,
+    "host": "tunarr.k3s.local",
+    "port": 80,
     "use_tunarr_only": false,
     "http_timeout_seconds": 5
   }
