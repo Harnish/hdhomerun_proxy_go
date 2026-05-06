@@ -317,53 +317,41 @@ func (ap *AppProxy) onReceivedMessage(msg []byte) {
 // queryTuner sends a broadcast query to tuners
 func (ap *AppProxy) queryTuner(queryData []byte, callback func([]byte)) {
 	go func() {
-		addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("255.255.255.255:%d", HDHomeRunDiscoveryUDPPort))
+		broadcastAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("255.255.255.255:%d", HDHomeRunDiscoveryUDPPort))
 		if err != nil {
-			slog.Error("Error resolving address", "err", err)
+			slog.Error("Error resolving broadcast address", "err", err)
 			return
 		}
 
-		// Get local address for broadcast
-		conn, err := net.DialUDP("udp", nil, addr)
+		localAddr, err := net.ResolveUDPAddr("udp", "0.0.0.0:0")
 		if err != nil {
-			slog.Error("Error creating UDP connection", "err", err)
+			slog.Error("Error resolving local address", "err", err)
+			return
+		}
+
+		conn, err := net.ListenUDP("udp", localAddr)
+		if err != nil {
+			slog.Error("Error creating UDP socket", "err", err)
 			return
 		}
 		defer conn.Close()
 
-		_, err = conn.Write(queryData)
+		_, err = conn.WriteTo(queryData, broadcastAddr)
 		if err != nil {
-			slog.Error("Error sending query", "err", err)
+			slog.Error("Error sending broadcast query", "err", err)
 			return
 		}
 
-		// Listen for responses
-		listenAddr, err := net.ResolveUDPAddr("udp", ":0")
-		if err != nil {
-			slog.Error("Error resolving listen address", "err", err)
-			return
-		}
-
-		listener, err := net.ListenUDP("udp", listenAddr)
-		if err != nil {
-			slog.Error("Error creating UDP listener", "err", err)
-			return
-		}
-		defer listener.Close()
-
-		// Set a timeout for receiving responses
-		listener.SetReadDeadline(time.Now().Add(time.Duration(UDPReadTimeout) * time.Millisecond))
-
+		conn.SetReadDeadline(time.Now().Add(time.Duration(UDPReadTimeout) * time.Millisecond))
 		buf := make([]byte, UDPReadBufferSize)
 		for {
-			n, _, err := listener.ReadFromUDP(buf)
+			n, _, err := conn.ReadFromUDP(buf)
 			if err != nil {
 				if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
 					slog.Error("Error reading UDP response", "err", err)
 				}
 				return
 			}
-
 			if n > 0 {
 				slog.Debug("Reply received from tuner", "bytes", n)
 				callback(buf[:n])
