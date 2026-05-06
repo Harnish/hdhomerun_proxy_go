@@ -40,8 +40,10 @@ func TestBackendRouterStatsTunarr(t *testing.T) {
 
 func TestBackendRouterStatsConnectionCounts(t *testing.T) {
 	br := backendRouter{name: "AppProxy"}
+	br.activeConnectionsMutex.Lock()
 	br.activeUDPConnections = 3
 	br.activeDialConnections = 1
+	br.activeConnectionsMutex.Unlock()
 	s := br.Stats()
 	if s.ActiveUDP != 3 {
 		t.Errorf("expected ActiveUDP=3, got %d", s.ActiveUDP)
