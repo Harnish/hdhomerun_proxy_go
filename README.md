@@ -74,20 +74,15 @@ The binary now supports optional JSON configuration files for advanced customiza
 
 ## How It Works
 
-The app proxy and tuner proxy work together to bridge HDHomeRun discovery packets across network boundaries:
+The binary supports three operating modes:
 
-1. **App Proxy** (runs on tuner's network):
-   - Listens for TCP connections from the tuner proxy
-   - Receives encoded requests from the tuner proxy
-   - Broadcasts discovery queries to local tuners via UDP broadcast (255.255.255.255:65001)
-   - Optionally connects directly to a specific HDHomeRun device
-   - Forwards tuner responses back to the tuner proxy
+**Tuner Proxy Mode** (two machines, different VLANs):
+1. **App Proxy** (runs on tuner's network): listens for TCP connections from the Tuner Proxy, broadcasts discovery queries to local HDHomeRun devices via UDP, and forwards responses back.
+2. **Tuner Proxy** (runs on app's network): listens for UDP broadcast packets from local apps, forwards them to the App Proxy over TCP, and relays responses back to apps.
 
-2. **Tuner Proxy** (runs on app's network):
-   - Listens for UDP broadcast packets from local apps (0.0.0.0:65001)
-   - Connects to the app proxy via TCP (standard mode) or directly to HDHomeRun (direct mode)
-   - Forwards discovery requests to the app proxy/HDHomeRun
-   - Receives responses and sends them back to the apps via UDP
+**Direct Mode** (single machine with IP route to HDHomeRun): the Tuner Proxy connects directly to the HDHomeRun device without an App Proxy.
+
+**Tunarr Backend Mode**: the proxy bridges to a [Tunarr](https://github.com/chrisbenincasa/tunarr) server via HTTP, making Tunarr appear as an HDHomeRun device to apps. Can run alongside real HDHomeRun devices (hybrid) or replace them entirely (`use_tunarr_only`).
 
 ## Requirements
 
@@ -170,21 +165,26 @@ Run with: `docker-compose up -d`
 
 ## Recent Changes
 
-### Configuration File Support (Latest)
+### Bug Fixes (Latest)
+- Fixed `queryTuner` UDP socket: was opening a separate listener that never received replies; now uses an unconnected socket with `ReadFromUDP` so unicast replies from HDHomeRun devices are correctly received
+- Fixed CRLF escaping in discovery response functions — protocol output now contains actual CR+LF bytes instead of the literal 4-character sequence `\r\n`
+- Removed duplicate `BaseURL` field from `BuildHDHRDiscoveryPacket`
+- Fixed `activeDialConnections` counter — connection logging now reports accurate values instead of always `0/0`
+- Fixed `handleUDPBroadcasts` buffer allocation to use the `UDPReadBufferSize` constant consistently
+
+### Tunarr Backend Support
+- Added Tunarr as a backend source alongside (or instead of) real HDHomeRun devices
+- Tunarr devices appear as HDHR-compatible devices to apps via translated discovery responses
+- Hybrid mode: query both HDHR and Tunarr, prefer Tunarr responses
+- Exclusive mode (`use_tunarr_only`): ignore HDHR entirely and use only Tunarr
+- Configurable via the `tunarr` section in the JSON config file (see [CONFIG.md](CONFIG.md))
+
+### Configuration File Support
 - Added JSON configuration file support via `-config` flag
 - New `-template` flag to generate template configuration
 - Support for direct HDHomeRun connections in both app and tuner modes
 - Command-line arguments now override config file settings
 - Structured logging with configurable levels
-
-### App Proxy Enhancements
-- Added `hdhomerun_ip` parameter for direct connection
-- Improved error handling and logging
-
-### Tuner Proxy Enhancements
-- Added `-direct` flag for direct HDHomeRun mode
-- Configuration options for direct mode with custom IP
-- Better reconnection handling with configurable intervals
 
 ## Differences from Python Version
 
