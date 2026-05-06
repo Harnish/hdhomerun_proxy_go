@@ -236,13 +236,11 @@ func ConvertLineupToHDHRFormat(lineup []TunarrLineupItem) string {
 // BuildHDHRDiscoveryPacket creates an HDHomeRun-like discovery response from Tunarr data
 // This can be sent back via UDP to make Tunarr appear as an HDHR device
 func BuildHDHRDiscoveryPacket(tunarrInfo *TunarrDiscoverResponse, tunarPort int, srcIP string) []byte {
-	// HDHR discovery response format (simplified key:value pairs)
 	response := fmt.Sprintf("Device: HDHR3-US\r\n")
 	response += fmt.Sprintf("DeviceAuth: 00000000\r\n")
 	response += fmt.Sprintf("BaseURL: http://%s:%d\r\n", srcIP, tunarPort)
 	response += fmt.Sprintf("LineupURL: http://%s:%d/lineup.json\r\n", srcIP, tunarPort)
 	response += fmt.Sprintf("TunerCount: %d\r\n", tunarrInfo.TunerCount)
-	response += fmt.Sprintf("BaseURL: http://%s:%d\r\n", srcIP, tunarPort)
 	response += fmt.Sprintf("FirmwareName: http_live\r\n")
 	response += fmt.Sprintf("FirmwareVersion: 20191217\r\n")
 	response += fmt.Sprintf("FriendlyName: Tunarr\r\n")

@@ -45,3 +45,12 @@ func TestBuildHDHRDiscoveryPacketCRLF(t *testing.T) {
 		t.Error("BuildHDHRDiscoveryPacket: missing CRLF")
 	}
 }
+
+func TestBuildHDHRDiscoveryPacketNoDuplicateBaseURL(t *testing.T) {
+	info := &TunarrDiscoverResponse{TunerCount: 2}
+	result := string(BuildHDHRDiscoveryPacket(info, 8000, "127.0.0.1"))
+	count := strings.Count(result, "BaseURL:")
+	if count != 1 {
+		t.Errorf("expected 1 BaseURL field, got %d", count)
+	}
+}
