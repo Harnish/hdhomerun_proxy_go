@@ -206,13 +206,13 @@ func (tb *TunarrBackend) GetStreamURL(channel string) string {
 // BuildDiscoveryResponse creates a discovery response that can be sent back to apps
 // This mimics HDHomeRun discovery but points to Tunarr
 func (tb *TunarrBackend) BuildDiscoveryResponse(ctx context.Context, tunarr *TunarrDiscoverResponse) string {
-	response := fmt.Sprintf("Device: Tunarr-HDHR (Tunarr)\\r\\n")
-	response += fmt.Sprintf("DeviceAuth: tunarr-spoofed\\r\\n")
-	response += fmt.Sprintf("BaseURL: %s\\r\\n", tb.baseURL)
-	response += fmt.Sprintf("FirmwareName: tunarr\\r\\n")
-	response += fmt.Sprintf("FirmwareVersion: 1.0\\r\\n")
-	response += fmt.Sprintf("LineupURL: %s/lineup.json\\r\\n", tb.baseURL)
-	response += fmt.Sprintf("TunerCount: %d\\r\\n", tunarr.TunerCount)
+	response := fmt.Sprintf("Device: Tunarr-HDHR (Tunarr)\r\n")
+	response += fmt.Sprintf("DeviceAuth: tunarr-spoofed\r\n")
+	response += fmt.Sprintf("BaseURL: %s\r\n", tb.baseURL)
+	response += fmt.Sprintf("FirmwareName: tunarr\r\n")
+	response += fmt.Sprintf("FirmwareVersion: 1.0\r\n")
+	response += fmt.Sprintf("LineupURL: %s/lineup.json\r\n", tb.baseURL)
+	response += fmt.Sprintf("TunerCount: %d\r\n", tunarr.TunerCount)
 
 	return response
 }
@@ -224,10 +224,10 @@ func ConvertLineupToHDHRFormat(lineup []TunarrLineupItem) string {
 	// In practice, this would be more complex to fully emulate HDHomeRun
 	result := ""
 	for i, item := range lineup {
-		result += fmt.Sprintf("Channel: %s\\r\\n", item.GuideNumber)
-		result += fmt.Sprintf("Guide: %s\\r\\n", item.GuideName)
+		result += fmt.Sprintf("Channel: %s\r\n", item.GuideNumber)
+		result += fmt.Sprintf("Guide: %s\r\n", item.GuideName)
 		if i < len(lineup)-1 {
-			result += "---\\r\\n"
+			result += "---\r\n"
 		}
 	}
 	return result
@@ -237,15 +237,15 @@ func ConvertLineupToHDHRFormat(lineup []TunarrLineupItem) string {
 // This can be sent back via UDP to make Tunarr appear as an HDHR device
 func BuildHDHRDiscoveryPacket(tunarrInfo *TunarrDiscoverResponse, tunarPort int, srcIP string) []byte {
 	// HDHR discovery response format (simplified key:value pairs)
-	response := fmt.Sprintf("Device: HDHR3-US\\r\n")
-	response += fmt.Sprintf("DeviceAuth: 00000000\\r\n")
-	response += fmt.Sprintf("BaseURL: http://%s:%d\\r\n", srcIP, tunarPort)
-	response += fmt.Sprintf("LineupURL: http://%s:%d/lineup.json\\r\n", srcIP, tunarPort)
-	response += fmt.Sprintf("TunerCount: %d\\r\n", tunarrInfo.TunerCount)
-	response += fmt.Sprintf("BaseURL: http://%s:%d\\r\n", srcIP, tunarPort)
-	response += fmt.Sprintf("FirmwareName: http_live\\r\n")
-	response += fmt.Sprintf("FirmwareVersion: 20191217\\r\n")
-	response += fmt.Sprintf("FriendlyName: Tunarr\\r\n")
+	response := fmt.Sprintf("Device: HDHR3-US\r\n")
+	response += fmt.Sprintf("DeviceAuth: 00000000\r\n")
+	response += fmt.Sprintf("BaseURL: http://%s:%d\r\n", srcIP, tunarPort)
+	response += fmt.Sprintf("LineupURL: http://%s:%d/lineup.json\r\n", srcIP, tunarPort)
+	response += fmt.Sprintf("TunerCount: %d\r\n", tunarrInfo.TunerCount)
+	response += fmt.Sprintf("BaseURL: http://%s:%d\r\n", srcIP, tunarPort)
+	response += fmt.Sprintf("FirmwareName: http_live\r\n")
+	response += fmt.Sprintf("FirmwareVersion: 20191217\r\n")
+	response += fmt.Sprintf("FriendlyName: Tunarr\r\n")
 
 	return []byte(response)
 }
