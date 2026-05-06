@@ -45,7 +45,12 @@ func (br *backendRouter) forwardToTunarr(queryData []byte, appAddr *net.UDPAddr,
 			return false
 		}
 
-		localIP := br.resolveLocalIP(appAddr)
+		var localIP string
+		if br.resolveLocalIP != nil {
+			localIP = br.resolveLocalIP(appAddr)
+		} else {
+			localIP = appAddr.IP.String()
+		}
 		response := BuildHDHRDiscoveryPacket(info, br.tunarr.port, localIP)
 		_, err = replyConn.WriteToUDP(response, appAddr)
 		if err != nil {
