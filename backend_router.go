@@ -20,6 +20,32 @@ type backendRouter struct {
 	resolveLocalIP         func(*net.UDPAddr) string
 }
 
+// ProxyStats is a point-in-time snapshot of backendRouter state for display.
+type ProxyStats struct {
+	Name             string
+	DirectHDHRIP     string
+	TunarrPort       int
+	TunarrConfigured bool // true if tunarr != nil (configured at startup)
+	ActiveUDP        int
+	ActiveDial       int
+}
+
+func (br *backendRouter) Stats() ProxyStats {
+	br.activeConnectionsMutex.Lock()
+	defer br.activeConnectionsMutex.Unlock()
+	s := ProxyStats{
+		Name:         br.name,
+		DirectHDHRIP: br.directHDHRIP,
+		ActiveUDP:    br.activeUDPConnections,
+		ActiveDial:   br.activeDialConnections,
+	}
+	if br.tunarr != nil {
+		s.TunarrPort = br.tunarr.port
+		s.TunarrConfigured = true
+	}
+	return s
+}
+
 func (br *backendRouter) forwardToBackend(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) {
 	if br.tunarr != nil {
 		if br.forwardToTunarr(queryData, appAddr, replyConn, ctx) {
