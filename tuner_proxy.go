@@ -363,7 +363,7 @@ func (tp *TunerProxy) connectToAppProxy(ctx context.Context, appProxyHost string
 
 // handleUDPBroadcasts handles incoming broadcast packets
 func (tp *TunerProxy) handleUDPBroadcasts(ctx context.Context) {
-	buf := make([]byte, 4096)
+	buf := make([]byte, UDPReadBufferSize)
 	codec := NewMessageCodec()
 
 	for {
