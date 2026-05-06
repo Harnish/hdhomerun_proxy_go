@@ -120,19 +120,25 @@ func (ap *AppProxy) runDirectMode(ctx context.Context, bindAddr string, cfg *Con
 
 // forwardToBackend sends a query to the HDHR or Tunarr backend and replies back to the app
 func (ap *AppProxy) forwardToBackend(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) {
-	// Try Tunarr first if available
+	ap.activeConnectionsMutex.Lock()
+	ap.activeUDPConnections++
+	ap.activeConnectionsMutex.Unlock()
+	defer func() {
+		ap.activeConnectionsMutex.Lock()
+		ap.activeUDPConnections--
+		ap.activeConnectionsMutex.Unlock()
+	}()
+
 	if ap.tunarr != nil {
 		if ap.forwardToTunarr(queryData, appAddr, replyConn, ctx) {
 			return
 		}
-		// If Tunarr-only mode, don't fall back to HDHR
 		if ap.useTunarrOnly {
 			slog.Warn("Tunarr-only mode but Tunarr request failed")
 			return
 		}
 	}
 
-	// Fall back to direct HDHR if configured
 	if ap.directHDHRIP != "" {
 		ap.forwardToDirectHDHR(queryData, appAddr, replyConn)
 	}
@@ -172,6 +178,15 @@ func (ap *AppProxy) forwardToTunarr(queryData []byte, appAddr *net.UDPAddr, repl
 
 // forwardToDirectHDHR sends a query to the HDHomeRun and replies back to the app
 func (ap *AppProxy) forwardToDirectHDHR(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn) {
+	ap.activeConnectionsMutex.Lock()
+	ap.activeDialConnections++
+	ap.activeConnectionsMutex.Unlock()
+	defer func() {
+		ap.activeConnectionsMutex.Lock()
+		ap.activeDialConnections--
+		ap.activeConnectionsMutex.Unlock()
+	}()
+
 	hdhrAddr := net.JoinHostPort(ap.directHDHRIP, fmt.Sprintf("%d", HDHomeRunDiscoveryUDPPort))
 	hdhrUDPAddr, err := net.ResolveUDPAddr("udp", hdhrAddr)
 	if err != nil {
@@ -186,14 +201,12 @@ func (ap *AppProxy) forwardToDirectHDHR(queryData []byte, appAddr *net.UDPAddr, 
 	}
 	defer conn.Close()
 
-	// Send query to HDHomeRun
 	_, err = conn.Write(queryData)
 	if err != nil {
 		slog.Error("Error sending query to HDHomeRun", "err", err)
 		return
 	}
 
-	// Wait for response
 	conn.SetReadDeadline(time.Now().Add(time.Duration(UDPReadTimeout) * time.Millisecond))
 	respBuf := make([]byte, UDPReadBufferSize)
 	n, err := conn.Read(respBuf)
@@ -206,8 +219,6 @@ func (ap *AppProxy) forwardToDirectHDHR(queryData []byte, appAddr *net.UDPAddr, 
 
 	if n > 0 {
 		slog.Debug("Response received from HDHomeRun", "bytes", n)
-
-		// Send response back to the original app
 		_, err := replyConn.WriteToUDP(respBuf[:n], appAddr)
 		if err != nil {
 			slog.Error("Error sending response to app", "err", err)
