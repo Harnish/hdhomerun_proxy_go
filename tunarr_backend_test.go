@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,7 @@ func TestBuildDiscoveryResponseCRLF(t *testing.T) {
 		baseURL: "http://localhost:8000",
 	}
 	info := &TunarrDiscoverResponse{TunerCount: 2}
-	result := backend.BuildDiscoveryResponse(nil, info)
+	result := backend.BuildDiscoveryResponse(context.Background(), info)
 	if strings.Contains(result, `\r\n`) {
 		t.Error("BuildDiscoveryResponse: contains literal \\r\\n instead of CRLF")
 	}

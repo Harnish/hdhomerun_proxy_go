@@ -131,15 +131,6 @@ func (tp *TunerProxy) runDirectMode(ctx context.Context, cfg *Config) error {
 
 // forwardToBackend sends a query to the HDHR or Tunarr backend and replies back to the app
 func (tp *TunerProxy) forwardToBackend(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) {
-	tp.activeConnectionsMutex.Lock()
-	tp.activeUDPConnections++
-	tp.activeConnectionsMutex.Unlock()
-	defer func() {
-		tp.activeConnectionsMutex.Lock()
-		tp.activeUDPConnections--
-		tp.activeConnectionsMutex.Unlock()
-	}()
-
 	if tp.tunarr != nil {
 		if tp.forwardToTunarr(queryData, appAddr, replyConn, ctx) {
 			return

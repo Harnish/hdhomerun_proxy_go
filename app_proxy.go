@@ -120,15 +120,6 @@ func (ap *AppProxy) runDirectMode(ctx context.Context, bindAddr string, cfg *Con
 
 // forwardToBackend sends a query to the HDHR or Tunarr backend and replies back to the app
 func (ap *AppProxy) forwardToBackend(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) {
-	ap.activeConnectionsMutex.Lock()
-	ap.activeUDPConnections++
-	ap.activeConnectionsMutex.Unlock()
-	defer func() {
-		ap.activeConnectionsMutex.Lock()
-		ap.activeUDPConnections--
-		ap.activeConnectionsMutex.Unlock()
-	}()
-
 	if ap.tunarr != nil {
 		if ap.forwardToTunarr(queryData, appAddr, replyConn, ctx) {
 			return
