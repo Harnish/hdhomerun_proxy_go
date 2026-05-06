@@ -14,23 +14,24 @@ import (
 
 // TunerProxy acts like an HDHomeRun tuner
 type TunerProxy struct {
-	codec                  *MessageCodec
-	tcpTransport           net.Conn
-	tcpMutex               sync.Mutex
-	udpTransport           *net.UDPConn
-	udpMutex               sync.Mutex
-	directHDHRIP           string         // If set, connect directly to HDHomeRun instead of app proxy
-	tunarr                 *TunarrBackend // Optional Tunarr backend
-	useTunarrOnly          bool           // If true, ignore HDHR and only use Tunarr
-	activeConnectionsMutex sync.Mutex
-	activeUDPConnections   int // Number of active UDP connections
-	activeDialConnections  int // Number of active dial connections to HDHR/Tunarr
+	codec        *MessageCodec
+	tcpTransport net.Conn
+	tcpMutex     sync.Mutex
+	udpTransport *net.UDPConn
+	udpMutex     sync.Mutex
+	backendRouter
 }
 
 // NewTunerProxy creates a new TunerProxy
 func NewTunerProxy() *TunerProxy {
 	return &TunerProxy{
 		codec: NewMessageCodec(),
+		backendRouter: backendRouter{
+			name: "TunerProxy",
+			resolveLocalIP: func(appAddr *net.UDPAddr) string {
+				return appAddr.IP.String()
+			},
+		},
 	}
 }
 
@@ -125,101 +126,6 @@ func (tp *TunerProxy) runDirectMode(ctx context.Context, cfg *Config) error {
 
 			// Forward the query to HDHR or Tunarr backend and reply back
 			go tp.forwardToBackend(buf[:n], remoteAddr, udpConn, ctx)
-		}
-	}
-}
-
-// forwardToBackend sends a query to the HDHR or Tunarr backend and replies back to the app
-func (tp *TunerProxy) forwardToBackend(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) {
-	if tp.tunarr != nil {
-		if tp.forwardToTunarr(queryData, appAddr, replyConn, ctx) {
-			return
-		}
-		if tp.useTunarrOnly {
-			slog.Warn("Tunarr-only mode but Tunarr request failed")
-			return
-		}
-	}
-
-	if tp.directHDHRIP != "" {
-		tp.forwardToDirectHDHR(queryData, appAddr, replyConn)
-	}
-}
-
-// forwardToTunarr sends a request to Tunarr backend
-func (tp *TunerProxy) forwardToTunarr(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) bool {
-	// Check if this is a discovery request
-	queryStr := string(queryData)
-	if queryStr == "TYPE: discover\r\n" || queryStr == "discover" {
-		// Get Tunarr device info
-		info, err := tp.tunarr.GetDiscoverInfo(ctx)
-		if err != nil {
-			slog.Error("Error getting Tunarr discovery info", "err", err)
-			return false
-		}
-
-		// Build HDHR-like discovery response from Tunarr
-		localIP := appAddr.IP.String()
-		response := BuildHDHRDiscoveryPacket(info, tp.tunarr.port, localIP)
-		_, err = replyConn.WriteToUDP(response, appAddr)
-		if err != nil {
-			slog.Error("Error sending Tunarr discovery response to app", "err", err)
-			return false
-		}
-
-		slog.Debug("Tunarr discovery response sent", "bytes", len(response))
-		return true
-	}
-
-	return false
-}
-
-// forwardToDirectHDHR sends a query to the HDHomeRun and replies back to the app
-func (tp *TunerProxy) forwardToDirectHDHR(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn) {
-	tp.activeConnectionsMutex.Lock()
-	tp.activeDialConnections++
-	tp.activeConnectionsMutex.Unlock()
-	defer func() {
-		tp.activeConnectionsMutex.Lock()
-		tp.activeDialConnections--
-		tp.activeConnectionsMutex.Unlock()
-	}()
-
-	hdhrAddr := net.JoinHostPort(tp.directHDHRIP, fmt.Sprintf("%d", HDHomeRunDiscoveryUDPPort))
-	hdhrUDPAddr, err := net.ResolveUDPAddr("udp", hdhrAddr)
-	if err != nil {
-		slog.Error("Error resolving HDHomeRun address", "addr", hdhrAddr, "err", err)
-		return
-	}
-
-	conn, err := net.DialUDP("udp", nil, hdhrUDPAddr)
-	if err != nil {
-		slog.Error("Error connecting to HDHomeRun", "addr", hdhrAddr, "err", err)
-		return
-	}
-	defer conn.Close()
-
-	_, err = conn.Write(queryData)
-	if err != nil {
-		slog.Error("Error sending query to HDHomeRun", "err", err)
-		return
-	}
-
-	conn.SetReadDeadline(time.Now().Add(time.Duration(UDPReadTimeout) * time.Millisecond))
-	respBuf := make([]byte, UDPReadBufferSize)
-	n, err := conn.Read(respBuf)
-	if err != nil {
-		if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
-			slog.Error("Error reading response from HDHomeRun", "err", err)
-		}
-		return
-	}
-
-	if n > 0 {
-		slog.Debug("Response received from HDHomeRun (direct mode)", "bytes", n)
-		_, err := replyConn.WriteToUDP(respBuf[:n], appAddr)
-		if err != nil {
-			slog.Error("Error sending response to app", "err", err)
 		}
 	}
 }
@@ -452,22 +358,3 @@ func (tp *TunerProxy) onMessageReceivedFromAppProxy(msg []byte) {
 	}
 }
 
-// logActiveConnections periodically logs the number of active connections
-func (tp *TunerProxy) logActiveConnections(ctx context.Context, intervalSeconds int) {
-	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			tp.activeConnectionsMutex.Lock()
-			udpCount := tp.activeUDPConnections
-			dialCount := tp.activeDialConnections
-			tp.activeConnectionsMutex.Unlock()
-
-			slog.Info("TunerProxy active connections", "udp", udpCount, "dial", dialCount, "total", udpCount+dialCount)
-		}
-	}
-}
