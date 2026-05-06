@@ -18,6 +18,8 @@ func main() {
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
 	flag.StringVar(&configFile, "config", "", "Path to config file (JSON)")
 	flag.BoolVar(&templateMode, "template", false, "Generate a template config file and exit")
+	var tuiMode bool
+	flag.BoolVar(&tuiMode, "tui", false, "Enable terminal UI (disables plain log output)")
 	flag.Parse()
 	args := flag.Args()
 
@@ -60,9 +62,9 @@ func main() {
 
 	switch mode {
 	case "app":
-		runAppProxy(args[1:], cfg)
+		runAppProxy(args[1:], cfg, tuiMode)
 	case "tuner":
-		runTunerProxy(args[1:], cfg)
+		runTunerProxy(args[1:], cfg, tuiMode)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown mode: %s\n", mode)
 		printUsage()
@@ -78,11 +80,12 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  -config string\n\tPath to JSON config file\n")
 	fmt.Fprintf(os.Stderr, "  -debug\n\tEnable debug logging\n")
 	fmt.Fprintf(os.Stderr, "  -template\n\tGenerate a template config file and exit\n")
+	fmt.Fprintf(os.Stderr, "  -tui\n\tEnable terminal UI dashboard\n")
 	fmt.Fprintf(os.Stderr, "\nNote: Tunarr backend can be enabled via config file (-config)\n")
 	fmt.Fprintf(os.Stderr, "Generate template with: %s -template\n", os.Args[0])
 }
 
-func runAppProxy(args []string, cfg *Config) {
+func runAppProxy(args []string, cfg *Config, tuiMode bool) {
 	var bindAddr, directIP string
 
 	if len(args) > 0 {
@@ -92,7 +95,6 @@ func runAppProxy(args []string, cfg *Config) {
 		directIP = args[1]
 	}
 
-	// Override with config values if not provided via CLI
 	if bindAddr == "" && cfg.App.BindAddress != "" {
 		bindAddr = cfg.App.BindAddress
 	}
@@ -103,7 +105,6 @@ func runAppProxy(args []string, cfg *Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -113,13 +114,21 @@ func runAppProxy(args []string, cfg *Config) {
 	}()
 
 	proxy := NewAppProxy()
+
+	if tuiMode {
+		runWithTUI(ctx, cancel, proxy, func() error {
+			return proxy.Run(ctx, bindAddr, directIP, cfg)
+		})
+		return
+	}
+
 	if err := proxy.Run(ctx, bindAddr, directIP, cfg); err != nil {
 		slog.Error("App proxy error", "err", err)
 		os.Exit(1)
 	}
 }
 
-func runTunerProxy(args []string, cfg *Config) {
+func runTunerProxy(args []string, cfg *Config, tuiMode bool) {
 	if len(args) < 1 || len(args) > 2 {
 		fmt.Fprintf(os.Stderr, "Error: tuner mode requires host argument\n")
 		fmt.Fprintf(os.Stderr, "Usage: %s tuner <app_proxy_host_or_hdhomerun_ip> [-direct]\n", os.Args[0])
@@ -129,7 +138,6 @@ func runTunerProxy(args []string, cfg *Config) {
 	hostOrIP := args[0]
 	isDirectMode := len(args) == 2 && args[1] == "-direct"
 
-	// Override with config values if not provided via CLI
 	if hostOrIP == "" {
 		if isDirectMode && cfg.Tuner.DirectHDHRIP != "" {
 			hostOrIP = cfg.Tuner.DirectHDHRIP
@@ -138,7 +146,6 @@ func runTunerProxy(args []string, cfg *Config) {
 		}
 	}
 
-	// Check config for direct mode setting
 	if !isDirectMode && cfg.Tuner.DirectMode {
 		isDirectMode = true
 		if hostOrIP == "" && cfg.Tuner.DirectHDHRIP != "" {
@@ -149,7 +156,6 @@ func runTunerProxy(args []string, cfg *Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -159,6 +165,14 @@ func runTunerProxy(args []string, cfg *Config) {
 	}()
 
 	proxy := NewTunerProxy()
+
+	if tuiMode {
+		runWithTUI(ctx, cancel, proxy, func() error {
+			return proxy.Run(ctx, hostOrIP, isDirectMode, cfg)
+		})
+		return
+	}
+
 	if err := proxy.Run(ctx, hostOrIP, isDirectMode, cfg); err != nil {
 		slog.Error("Tuner proxy error", "err", err)
 		os.Exit(1)
