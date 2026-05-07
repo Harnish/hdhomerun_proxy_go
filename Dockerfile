@@ -9,8 +9,9 @@ COPY go.mod go.sum* ./
 # Download dependencies
 RUN go mod download
 
-# Copy source code
+# Copy source code and embedded assets
 COPY *.go ./
+COPY web/ ./web/
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o hdhomerun_proxy .
