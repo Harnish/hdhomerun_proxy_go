@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type mockStatsProvider struct{ stats ProxyStats }
@@ -132,5 +134,56 @@ func TestWebServerPostConfig(t *testing.T) {
 	}
 	if !result["ok"] {
 		t.Error("expected ok=true")
+	}
+
+	// Verify the store was actually updated
+	req2, _ := http.NewRequest("GET", srv.URL+"/api/config", nil)
+	req2.SetBasicAuth("testuser", "testpass")
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cr configResponse
+	if err := json.NewDecoder(resp2.Body).Decode(&cr); err != nil {
+		t.Fatal(err)
+	}
+	if !cr.Config.Debug {
+		t.Error("expected Debug=true after POST")
+	}
+}
+
+func TestWebServerLogsWithEntry(t *testing.T) {
+	resetLogRingBuf()
+	appendLogEntry(logEntry{
+		Time:  time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+		Level: slog.LevelInfo,
+		Msg:   "hello world",
+		Attrs: "key=val",
+	})
+	_, srv := makeTestServer(t)
+	req, _ := http.NewRequest("GET", srv.URL+"/api/logs", nil)
+	req.SetBasicAuth("testuser", "testpass")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []logEntryJSON
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Time != "12:00:00" {
+		t.Errorf("expected time '12:00:00', got %q", entries[0].Time)
+	}
+	if entries[0].Level != "INFO" {
+		t.Errorf("expected level 'INFO', got %q", entries[0].Level)
+	}
+	if entries[0].Msg != "hello world" {
+		t.Errorf("expected msg 'hello world', got %q", entries[0].Msg)
+	}
+	if entries[0].Attrs != "key=val" {
+		t.Errorf("expected attrs 'key=val', got %q", entries[0].Attrs)
 	}
 }

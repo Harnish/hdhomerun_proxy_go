@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 )
 
 //go:embed web/index.html
@@ -40,7 +41,9 @@ func (ws *webServer) start(ctx context.Context, addr, user, pass string) error {
 	srv := &http.Server{Addr: addr, Handler: ws.handler(user, pass)}
 	go func() {
 		<-ctx.Done()
-		srv.Shutdown(context.Background()) //nolint:errcheck
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		srv.Shutdown(shutCtx) //nolint:errcheck
 	}()
 	slog.Info("Web UI listening", "addr", addr)
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
@@ -64,6 +67,10 @@ func (ws *webServer) basicAuth(user, pass string, next http.HandlerFunc) http.Ha
 }
 
 func (ws *webServer) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(indexHTML) //nolint:errcheck
 }
@@ -104,7 +111,8 @@ type configResponse struct {
 
 func (ws *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if r.Method == http.MethodPost {
+	switch r.Method {
+	case http.MethodPost:
 		var newCfg Config
 		if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -117,10 +125,12 @@ func (ws *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true}) //nolint:errcheck
-		return
+	case http.MethodGet:
+		json.NewEncoder(w).Encode(configResponse{ //nolint:errcheck
+			Config:  ws.store.Get(),
+			HasFile: ws.store.filePath != "",
+		})
+	default:
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 	}
-	json.NewEncoder(w).Encode(configResponse{ //nolint:errcheck
-		Config:  ws.store.Get(),
-		HasFile: ws.store.filePath != "",
-	})
 }
