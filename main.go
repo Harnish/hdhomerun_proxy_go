@@ -67,7 +67,7 @@ func main() {
 	// If webui is active without TUI, install tuiHandler{nil} so log entries
 	// reach the ring buffer (served at /api/logs) and still appear on stderr.
 	if webuiAddr != "" && !tuiMode {
-		slog.SetDefault(slog.New(newTuiHandler(nil)))
+		slog.SetDefault(slog.New(newTuiHandler(nil, level)))
 	}
 
 	if len(args) < 1 {

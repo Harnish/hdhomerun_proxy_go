@@ -209,7 +209,7 @@ func (m tuiModel) View() string {
 // the current goroutine, then cancels the context when the TUI exits.
 func runWithTUI(ctx context.Context, cancel context.CancelFunc, proxy statsProvider, runFn func() error) {
 	p := tea.NewProgram(newTuiModel(proxy), tea.WithAltScreen())
-	slog.SetDefault(slog.New(newTuiHandler(p)))
+	slog.SetDefault(slog.New(newTuiHandler(p, slog.LevelDebug)))
 
 	go func() {
 		if err := runFn(); err != nil {

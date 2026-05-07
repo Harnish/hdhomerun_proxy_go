@@ -47,14 +47,15 @@ func getLogEntries() []logEntry {
 
 type tuiHandler struct {
 	program *tea.Program
+	level   slog.Level
 }
 
-func newTuiHandler(p *tea.Program) *tuiHandler {
-	return &tuiHandler{program: p}
+func newTuiHandler(p *tea.Program, level slog.Level) *tuiHandler {
+	return &tuiHandler{program: p, level: level}
 }
 
-func (h *tuiHandler) Enabled(_ context.Context, _ slog.Level) bool {
-	return true
+func (h *tuiHandler) Enabled(_ context.Context, l slog.Level) bool {
+	return l >= h.level
 }
 
 func (h *tuiHandler) Handle(_ context.Context, r slog.Record) error {
@@ -69,11 +70,13 @@ func (h *tuiHandler) Handle(_ context.Context, r slog.Record) error {
 		h.program.Send(logMsg{entry: e})
 	} else {
 		// Write to stderr when running in webui-only mode (program == nil).
-		fmt.Fprintf(os.Stderr, "%s %s %s", e.Time.Format("15:04:05"), e.Level, e.Msg)
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "%s %s %s", e.Time.Format("15:04:05"), e.Level, e.Msg)
 		if e.Attrs != "" {
-			fmt.Fprintf(os.Stderr, " %s", e.Attrs)
+			fmt.Fprintf(&sb, " %s", e.Attrs)
 		}
-		fmt.Fprintln(os.Stderr)
+		sb.WriteByte('\n')
+		os.Stderr.WriteString(sb.String())
 	}
 	return nil
 }
