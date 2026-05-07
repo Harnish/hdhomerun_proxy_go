@@ -10,6 +10,9 @@ import (
 	"syscall"
 )
 
+// version is set at build time via -ldflags "-X main.version=<tag>"
+var version = "dev"
+
 func main() {
 	var debug bool
 	var configFile string
