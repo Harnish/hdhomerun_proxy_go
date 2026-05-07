@@ -1,0 +1,33 @@
+[Unit]
+Description=HDHomeRun Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hdhomerun
+Group=hdhomerun
+WorkingDirectory=/opt/hdhomerun-proxy
+
+# Edit ExecStart for your deployment:
+#
+# App proxy (runs on the tuner's network, e.g. the Pi is on the tuner VLAN):
+#ExecStart=/opt/hdhomerun-proxy/hdhomerun_proxy -config /opt/hdhomerun-proxy/hdhomerun_proxy.json app
+#
+# Tuner proxy (runs on the app's network, e.g. the Pi is on the client VLAN):
+#ExecStart=/opt/hdhomerun-proxy/hdhomerun_proxy -config /opt/hdhomerun-proxy/hdhomerun_proxy.json tuner
+#
+# App proxy with web UI:
+#ExecStart=/opt/hdhomerun-proxy/hdhomerun_proxy -config /opt/hdhomerun-proxy/hdhomerun_proxy.json -webui :8080 -webui-user admin -webui-pass changeme app
+#
+# Uncomment exactly one ExecStart line above.
+ExecStart=/opt/hdhomerun-proxy/hdhomerun_proxy -config /opt/hdhomerun-proxy/hdhomerun_proxy.json app
+
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hdhomerun-proxy
+
+[Install]
+WantedBy=multi-user.target

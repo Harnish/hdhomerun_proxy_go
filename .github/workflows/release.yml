@@ -1,0 +1,73 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            asset_name: hdhomerun_proxy-linux-amd64
+          - goos: linux
+            goarch: arm64
+            asset_name: hdhomerun_proxy-linux-arm64
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+            asset_name: hdhomerun_proxy-linux-arm-v7
+          - goos: windows
+            goarch: amd64
+            asset_name: hdhomerun_proxy-windows-amd64.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          CGO_ENABLED: "0"
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          go build -trimpath -ldflags="-s -w -X main.version=${RELEASE_TAG}" \
+            -o ${{ matrix.asset_name }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    name: Create release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
