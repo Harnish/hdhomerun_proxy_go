@@ -24,10 +24,11 @@ func newWebServer(store *configStore, router statsProvider) *webServer {
 }
 
 // handler returns an http.Handler with all routes behind Basic Auth.
-func (ws *webServer) handler(user, pass string) http.Handler {
+// Credentials are read from the store on each request, so they update live.
+func (ws *webServer) handler() http.Handler {
 	mux := http.NewServeMux()
 	auth := func(h http.HandlerFunc) http.HandlerFunc {
-		return ws.basicAuth(user, pass, h)
+		return ws.basicAuth(h)
 	}
 	mux.HandleFunc("/", auth(ws.handleIndex))
 	mux.HandleFunc("/api/stats", auth(ws.handleStats))
@@ -37,8 +38,10 @@ func (ws *webServer) handler(user, pass string) http.Handler {
 }
 
 // start starts the HTTP server, blocking until ctx is cancelled.
-func (ws *webServer) start(ctx context.Context, addr, user, pass string) error {
-	srv := &http.Server{Addr: addr, Handler: ws.handler(user, pass)}
+// The bind address is read from store.WebUI.Addr.
+func (ws *webServer) start(ctx context.Context) error {
+	addr := ws.store.Get().WebUI.Addr
+	srv := &http.Server{Addr: addr, Handler: ws.handler()}
 	go func() {
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -52,12 +55,13 @@ func (ws *webServer) start(ctx context.Context, addr, user, pass string) error {
 	return nil
 }
 
-func (ws *webServer) basicAuth(user, pass string, next http.HandlerFunc) http.HandlerFunc {
+func (ws *webServer) basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		wui := ws.store.Get().WebUI
 		u, p, ok := r.BasicAuth()
 		if !ok ||
-			subtle.ConstantTimeCompare([]byte(u), []byte(user)) != 1 ||
-			subtle.ConstantTimeCompare([]byte(p), []byte(pass)) != 1 {
+			subtle.ConstantTimeCompare([]byte(u), []byte(wui.User)) != 1 ||
+			subtle.ConstantTimeCompare([]byte(p), []byte(wui.Pass)) != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="HDHomeRun Proxy"`)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -123,6 +127,11 @@ func (ws *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "invalid config: hdhomerun_port and tcp_port must be non-zero"}) //nolint:errcheck
 			return
+		}
+		// Preserve webui credentials if the POST body didn't include them,
+		// preventing accidental lockout when saving unrelated settings.
+		if newCfg.WebUI.Addr == "" && newCfg.WebUI.User == "" && newCfg.WebUI.Pass == "" {
+			newCfg.WebUI = ws.store.Get().WebUI
 		}
 		if err := ws.store.Set(&newCfg); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)

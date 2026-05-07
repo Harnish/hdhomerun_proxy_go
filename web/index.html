@@ -27,7 +27,7 @@ td{padding:2px 6px;vertical-align:top;word-break:break-word}
 .section-hdr{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#7c6af7;border-bottom:1px solid #2a2a2a;padding-bottom:4px;margin:14px 0 6px}
 .field-row{display:flex;align-items:center;margin:5px 0;gap:8px}
 .field-row label{color:#888;width:260px;flex-shrink:0;font-size:12px}
-.field-row input[type=text],.field-row input[type=number]{flex:1;background:#1e1e1e;border:1px solid #333;border-radius:3px;padding:4px 7px;color:#ccc;font-family:monospace;font-size:12px}
+.field-row input[type=text],.field-row input[type=number],.field-row input[type=password]{flex:1;background:#1e1e1e;border:1px solid #333;border-radius:3px;padding:4px 7px;color:#ccc;font-family:monospace;font-size:12px}
 .field-row input[type=checkbox]{accent-color:#7c6af7;width:14px;height:14px}
 .restart{color:#c67c00;font-size:10px;margin-left:4px}
 .no-file-banner{background:#2a1e00;border:1px solid #c67c00;border-radius:4px;color:#c67c00;padding:8px 12px;margin-bottom:12px;font-size:12px;display:none}
@@ -113,6 +113,13 @@ td{padding:2px 6px;vertical-align:top;word-break:break-word}
     <div class="field-row"><label>port</label><input type="number" id="f-tunarr_port"></div>
     <div class="field-row"><label>use_tunarr_only</label><input type="checkbox" id="f-tunarr_use_tunarr_only"></div>
     <div class="field-row"><label>http_timeout_seconds</label><input type="number" id="f-tunarr_http_timeout_seconds"></div>
+
+    <div class="section-hdr">Web UI
+      <span class="restart">addr requires restart; credentials apply immediately</span>
+    </div>
+    <div class="field-row"><label>addr</label><input type="text" id="f-webui_addr" placeholder=":8080"></div>
+    <div class="field-row"><label>user</label><input type="text" id="f-webui_user"></div>
+    <div class="field-row"><label>pass</label><input type="password" id="f-webui_pass"></div>
 
     <button type="button" class="save-btn" onclick="saveConfig()">Save</button>
   </form>
@@ -244,6 +251,10 @@ function loadConfig() {
     document.getElementById('f-tunarr_port').value = tunarr.port || 0;
     document.getElementById('f-tunarr_use_tunarr_only').checked = !!tunarr.use_tunarr_only;
     document.getElementById('f-tunarr_http_timeout_seconds').value = tunarr.http_timeout_seconds || 0;
+    var webui = c.webui || {};
+    document.getElementById('f-webui_addr').value = webui.addr || '';
+    document.getElementById('f-webui_user').value = webui.user || '';
+    document.getElementById('f-webui_pass').value = webui.pass || '';
   }).catch(function() {});
 }
 
@@ -273,6 +284,11 @@ function saveConfig() {
       port: parseInt(iv('f-tunarr_port')) || 0,
       use_tunarr_only: ic('f-tunarr_use_tunarr_only'),
       http_timeout_seconds: parseInt(iv('f-tunarr_http_timeout_seconds')) || 0
+    },
+    webui: {
+      addr: iv('f-webui_addr'),
+      user: iv('f-webui_user'),
+      pass: iv('f-webui_pass')
     }
   };
   fetch('/api/config', {

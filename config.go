@@ -42,6 +42,13 @@ type Config struct {
 		UseTunarrOnly bool   `json:"use_tunarr_only"` // If true, only use Tunarr, ignore HDHR
 		HttpTimeout   int    `json:"http_timeout_seconds"`
 	} `json:"tunarr"`
+
+	// Web UI settings (stored in config so credentials persist across restarts)
+	WebUI struct {
+		Addr string `json:"addr"`
+		User string `json:"user"`
+		Pass string `json:"pass"`
+	} `json:"webui"`
 }
 
 // DefaultConfig returns a config with default values

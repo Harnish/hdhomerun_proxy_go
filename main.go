@@ -24,16 +24,13 @@ func main() {
 	var tuiMode bool
 	flag.BoolVar(&tuiMode, "tui", false, "Enable terminal UI (disables plain log output)")
 	var webuiAddr, webuiUser, webuiPass string
+	var webuiReset bool
 	flag.StringVar(&webuiAddr, "webui", "", "Bind address for web UI (e.g. :8080)")
-	flag.StringVar(&webuiUser, "webui-user", "", "HTTP Basic Auth username (required with -webui)")
-	flag.StringVar(&webuiPass, "webui-pass", "", "HTTP Basic Auth password (required with -webui)")
+	flag.StringVar(&webuiUser, "webui-user", "", "HTTP Basic Auth username (required with -webui when config has no webui)")
+	flag.StringVar(&webuiPass, "webui-pass", "", "HTTP Basic Auth password (required with -webui when config has no webui)")
+	flag.BoolVar(&webuiReset, "webui-reset", false, "Force -webui/-webui-user/-webui-pass to overwrite config file webui settings")
 	flag.Parse()
 	args := flag.Args()
-
-	if webuiAddr != "" && (webuiUser == "" || webuiPass == "") {
-		fmt.Fprintf(os.Stderr, "Error: -webui-user and -webui-pass are required when -webui is set\n")
-		os.Exit(1)
-	}
 
 	if templateMode {
 		if err := SaveConfigTemplate("hdhomerun_proxy.json"); err != nil {
@@ -65,12 +62,37 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
+	// Resolve webui settings: config takes priority unless -webui-reset or config has no webui.
+	// When CLI values are used, they are merged into cfg and persisted to the config file.
+	var mergedWebUIFromCLI bool
+	if cfg.WebUI.Addr != "" && !webuiReset {
+		if webuiAddr != "" {
+			slog.Warn("-webui flags ignored; webui settings loaded from config (use -webui-reset to override)")
+		}
+	} else if webuiAddr != "" {
+		if webuiUser == "" || webuiPass == "" {
+			fmt.Fprintf(os.Stderr, "Error: -webui-user and -webui-pass are required when -webui is set\n")
+			os.Exit(1)
+		}
+		cfg.WebUI.Addr = webuiAddr
+		cfg.WebUI.User = webuiUser
+		cfg.WebUI.Pass = webuiPass
+		mergedWebUIFromCLI = true
+	}
+
 	store := newConfigStore(cfg, configFile)
 
 	// If webui is active without TUI, install tuiHandler{nil} so log entries
 	// reach the ring buffer (served at /api/logs) and still appear on stderr.
-	if webuiAddr != "" && !tuiMode {
+	if cfg.WebUI.Addr != "" && !tuiMode {
 		slog.SetDefault(slog.New(newTuiHandler(nil, level)))
+	}
+
+	// Persist webui CLI values to the config file so they survive restarts.
+	if mergedWebUIFromCLI && configFile != "" {
+		if err := store.Set(cfg); err != nil {
+			slog.Warn("Could not persist webui settings to config", "err", err)
+		}
 	}
 
 	if len(args) < 1 {
@@ -82,9 +104,9 @@ func main() {
 
 	switch mode {
 	case "app":
-		runAppProxy(args[1:], store, tuiMode, webuiAddr, webuiUser, webuiPass)
+		runAppProxy(args[1:], store, tuiMode)
 	case "tuner":
-		runTunerProxy(args[1:], store, tuiMode, webuiAddr, webuiUser, webuiPass)
+		runTunerProxy(args[1:], store, tuiMode)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown mode: %s\n", mode)
 		printUsage()
@@ -102,13 +124,15 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  -template\n\tGenerate a template config file and exit\n")
 	fmt.Fprintf(os.Stderr, "  -tui\n\tEnable terminal UI dashboard\n")
 	fmt.Fprintf(os.Stderr, "  -webui string\n\tBind address for web UI (e.g. :8080)\n")
-	fmt.Fprintf(os.Stderr, "  -webui-user string\n\tHTTP Basic Auth username (required with -webui)\n")
-	fmt.Fprintf(os.Stderr, "  -webui-pass string\n\tHTTP Basic Auth password (required with -webui)\n")
-	fmt.Fprintf(os.Stderr, "\nNote: Tunarr backend can be enabled via config file (-config)\n")
+	fmt.Fprintf(os.Stderr, "  -webui-user string\n\tHTTP Basic Auth username (required with -webui when config has no webui)\n")
+	fmt.Fprintf(os.Stderr, "  -webui-pass string\n\tHTTP Basic Auth password (required with -webui when config has no webui)\n")
+	fmt.Fprintf(os.Stderr, "  -webui-reset\n\tForce CLI -webui flags to override config file webui settings\n")
+	fmt.Fprintf(os.Stderr, "\nNote: Webui credentials are stored in the config file after first use.\n")
+	fmt.Fprintf(os.Stderr, "      If the config has webui settings, -webui flags are ignored unless -webui-reset is passed.\n")
 	fmt.Fprintf(os.Stderr, "Generate template with: %s -template\n", os.Args[0])
 }
 
-func runAppProxy(args []string, store *configStore, tuiMode bool, webuiAddr, webuiUser, webuiPass string) {
+func runAppProxy(args []string, store *configStore, tuiMode bool) {
 	cfg := store.Get()
 	var bindAddr, directIP string
 
@@ -139,10 +163,10 @@ func runAppProxy(args []string, store *configStore, tuiMode bool, webuiAddr, web
 
 	proxy := NewAppProxy()
 
-	if webuiAddr != "" {
+	if store.Get().WebUI.Addr != "" {
 		ws := newWebServer(store, proxy)
 		go func() {
-			if err := ws.start(ctx, webuiAddr, webuiUser, webuiPass); err != nil {
+			if err := ws.start(ctx); err != nil {
 				slog.Error("Web UI error", "err", err)
 			}
 		}()
@@ -161,7 +185,7 @@ func runAppProxy(args []string, store *configStore, tuiMode bool, webuiAddr, web
 	}
 }
 
-func runTunerProxy(args []string, store *configStore, tuiMode bool, webuiAddr, webuiUser, webuiPass string) {
+func runTunerProxy(args []string, store *configStore, tuiMode bool) {
 	cfg := store.Get()
 	if len(args) > 2 {
 		fmt.Fprintf(os.Stderr, "Error: too many arguments for tuner mode\n")
@@ -220,10 +244,10 @@ func runTunerProxy(args []string, store *configStore, tuiMode bool, webuiAddr, w
 
 	proxy := NewTunerProxy()
 
-	if webuiAddr != "" {
+	if store.Get().WebUI.Addr != "" {
 		ws := newWebServer(store, proxy)
 		go func() {
-			if err := ws.start(ctx, webuiAddr, webuiUser, webuiPass); err != nil {
+			if err := ws.start(ctx); err != nil {
 				slog.Error("Web UI error", "err", err)
 			}
 		}()

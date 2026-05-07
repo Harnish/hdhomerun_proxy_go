@@ -16,11 +16,14 @@ func (m *mockStatsProvider) Stats() ProxyStats { return m.stats }
 
 func makeTestServer(t *testing.T) (*webServer, *httptest.Server) {
 	t.Helper()
-	store := newConfigStore(DefaultConfig(), "")
+	cfg := DefaultConfig()
+	cfg.WebUI.User = "testuser"
+	cfg.WebUI.Pass = "testpass"
+	store := newConfigStore(cfg, "")
 	ws := newWebServer(store, &mockStatsProvider{
 		stats: ProxyStats{Name: "TestProxy", ActiveUDP: 2, ActiveDial: 1},
 	})
-	srv := httptest.NewServer(ws.handler("testuser", "testpass"))
+	srv := httptest.NewServer(ws.handler())
 	t.Cleanup(srv.Close)
 	return ws, srv
 }

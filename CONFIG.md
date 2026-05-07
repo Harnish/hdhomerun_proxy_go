@@ -57,12 +57,27 @@ This creates `hdhomerun_proxy.json` with all available options.
 }
 ```
 
+### Web UI Settings
+```json
+{
+  "webui": {
+    "addr": ":8080",      // Bind address; empty disables the web UI
+    "user": "admin",      // HTTP Basic Auth username
+    "pass": "secret"      // HTTP Basic Auth password
+  }
+}
+```
+
+When the config file contains `webui` settings, the proxy starts the web UI automatically without any `-webui` flags. Credentials are read on each request, so changing them via the Config tab takes effect immediately without a restart.
+
 ## Priority Order
 
 Settings are applied in this priority:
-1. Command-line arguments (highest priority)
+1. Command-line arguments (highest priority) — **exception: webui (see below)**
 2. Config file values
 3. Built-in defaults (lowest priority)
+
+**Web UI exception:** if the config file already has `webui.addr` set, the `-webui`/`-webui-user`/`-webui-pass` CLI flags are ignored. Pass `-webui-reset` to force the CLI values to take effect and overwrite the config.
 
 Example: If config specifies `direct_hdhomerun_ip` but you pass a different IP on the command line, the command-line value wins.
 
