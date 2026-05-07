@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 )
 
 // Config holds the configuration for the proxy
@@ -154,4 +155,56 @@ func (c *Config) GetTCPPort() int {
 		return c.TCPPort
 	}
 	return TCPPort
+}
+
+// configStore holds a live *Config protected by a mutex.
+// filePath is the file the config was loaded from; empty means no backing file.
+type configStore struct {
+	mu       sync.RWMutex
+	cfg      *Config
+	filePath string
+}
+
+func newConfigStore(cfg *Config, filePath string) *configStore {
+	return &configStore{cfg: cfg, filePath: filePath}
+}
+
+// Get returns the current config. Callers must not mutate the returned pointer.
+func (cs *configStore) Get() *Config {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.cfg
+}
+
+// Set saves newCfg to disk (if filePath is set) and updates the in-memory config.
+func (cs *configStore) Set(newCfg *Config) error {
+	if cs.filePath != "" {
+		data, err := json.MarshalIndent(newCfg, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal config: %w", err)
+		}
+		if err := os.WriteFile(cs.filePath, data, 0644); err != nil {
+			return fmt.Errorf("failed to write config: %w", err)
+		}
+	}
+	cs.mu.Lock()
+	cs.cfg = newCfg
+	cs.mu.Unlock()
+	cs.ApplyLive(newCfg)
+	return nil
+}
+
+// ApplyLive applies the debug/log level immediately without requiring a restart.
+// Skipped when the TUI handler is active (it ignores level filtering already).
+func (cs *configStore) ApplyLive(newCfg *Config) {
+	if _, isTUI := slog.Default().Handler().(*tuiHandler); isTUI {
+		return
+	}
+	level := slog.LevelInfo
+	if newCfg.Debug {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: level,
+	})))
 }
