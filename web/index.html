@@ -1,1 +1,304 @@
-<!DOCTYPE html><html><body><p>Web UI loading...</p></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HDHomeRun Proxy</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:monospace;background:#111;color:#ccc;font-size:13px}
+nav{display:flex;align-items:center;background:#1a1a1a;border-bottom:1px solid #2a2a2a;padding:0 12px}
+nav h1{font-size:13px;color:#7c6af7;margin-right:20px;padding:10px 0}
+nav button{background:none;border:none;border-bottom:2px solid transparent;color:#666;padding:10px 14px;cursor:pointer;font-family:monospace;font-size:12px}
+nav button.active{color:#c9b8ff;border-bottom-color:#7c6af7}
+.tab{display:none;padding:12px;max-width:900px}
+.tab.active{display:block}
+.panel{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:12px;margin-bottom:12px}
+.panel h3{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#7c6af7;margin-bottom:8px}
+.stat-row{display:flex;justify-content:space-between;padding:2px 0}
+.stat-row .k{color:#888}.stat-row .v{color:#ccc}
+.backend-row{padding:2px 0;color:#ccc}
+.dot{color:#5af78e}
+table{width:100%;border-collapse:collapse}
+td{padding:2px 6px;vertical-align:top;word-break:break-word}
+.ts{color:#555;white-space:nowrap}
+.lv-INFO{color:#5af78e}.lv-WARN{color:#f4f99d}.lv-ERROR{color:#ff5c57}.lv-DEBUG{color:#57c7ff}
+.log-wrap{max-height:400px;overflow-y:auto;font-size:11px}
+.section-hdr{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#7c6af7;border-bottom:1px solid #2a2a2a;padding-bottom:4px;margin:14px 0 6px}
+.field-row{display:flex;align-items:center;margin:5px 0;gap:8px}
+.field-row label{color:#888;width:260px;flex-shrink:0;font-size:12px}
+.field-row input[type=text],.field-row input[type=number]{flex:1;background:#1e1e1e;border:1px solid #333;border-radius:3px;padding:4px 7px;color:#ccc;font-family:monospace;font-size:12px}
+.field-row input[type=checkbox]{accent-color:#7c6af7;width:14px;height:14px}
+.restart{color:#c67c00;font-size:10px;margin-left:4px}
+.no-file-banner{background:#2a1e00;border:1px solid #c67c00;border-radius:4px;color:#c67c00;padding:8px 12px;margin-bottom:12px;font-size:12px;display:none}
+.save-btn{background:#7c6af7;color:#fff;border:none;padding:8px 20px;border-radius:4px;cursor:pointer;font-family:monospace;font-size:12px;margin-top:14px}
+.save-btn:hover{background:#9a8cff}
+.toast{position:fixed;bottom:16px;right:16px;padding:9px 14px;border-radius:4px;font-size:12px;display:none;z-index:99}
+.toast.ok{background:#1a3a1a;border:1px solid #5af78e;color:#5af78e}
+.toast.err{background:#3a1a1a;border:1px solid #ff5c57;color:#ff5c57}
+</style>
+</head>
+<body>
+<nav>
+  <h1>HDHomeRun Proxy</h1>
+  <button class="active" onclick="switchTab('status',this)">Status</button>
+  <button onclick="switchTab('config',this)">Config</button>
+</nav>
+
+<div id="tab-status" class="tab active">
+  <div class="panel">
+    <h3>Connections</h3>
+    <div class="stat-row"><span class="k">UDP</span><span class="v" id="s-udp">-</span></div>
+    <div class="stat-row"><span class="k">Dial</span><span class="v" id="s-dial">-</span></div>
+    <div class="stat-row"><span class="k">Total</span><span class="v" id="s-total">-</span></div>
+  </div>
+  <div class="panel" id="backends-panel" style="display:none">
+    <h3>Backends</h3>
+    <div id="backends-list"></div>
+  </div>
+  <div class="panel">
+    <h3>Log
+      <label style="font-weight:normal;font-size:11px;margin-left:8px">
+        <input type="checkbox" id="show-debug" checked onchange="rerenderLog()"> debug
+      </label>
+    </h3>
+    <div class="log-wrap" id="log-wrap">
+      <table><tbody id="log-tbody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div id="tab-config" class="tab">
+  <div class="no-file-banner" id="no-file-banner">
+    No config file path set - changes apply in-memory only and will be lost on restart.
+  </div>
+  <form id="cfg-form" onsubmit="return false">
+    <div class="section-hdr">Network
+      <span class="restart">all fields require restart</span>
+    </div>
+    <div class="field-row"><label>hdhomerun_port</label><input type="number" id="f-hdhomerun_port"></div>
+    <div class="field-row"><label>tcp_port</label><input type="number" id="f-tcp_port"></div>
+    <div class="field-row"><label>udp_read_timeout_ms</label><input type="number" id="f-udp_read_timeout_ms"></div>
+    <div class="field-row"><label>udp_read_buffer_size</label><input type="number" id="f-udp_read_buffer_size"></div>
+    <div class="field-row"><label>reconnect_interval_seconds</label><input type="number" id="f-reconnect_interval_seconds"></div>
+
+    <div class="section-hdr">Logging</div>
+    <div class="field-row">
+      <label>debug <span class="restart">live reload</span></label>
+      <input type="checkbox" id="f-debug">
+    </div>
+    <div class="field-row">
+      <label>log_active_connections_interval_seconds <span class="restart">restart</span></label>
+      <input type="number" id="f-log_active_connections_interval_seconds">
+    </div>
+
+    <div class="section-hdr">App Proxy
+      <span class="restart">all fields require restart</span>
+    </div>
+    <div class="field-row"><label>bind_address</label><input type="text" id="f-app_bind_address"></div>
+    <div class="field-row"><label>direct_hdhomerun_ip</label><input type="text" id="f-app_direct_hdhomerun_ip"></div>
+
+    <div class="section-hdr">Tuner Proxy
+      <span class="restart">all fields require restart</span>
+    </div>
+    <div class="field-row"><label>app_proxy_host</label><input type="text" id="f-tuner_app_proxy_host"></div>
+    <div class="field-row"><label>direct_mode</label><input type="checkbox" id="f-tuner_direct_mode"></div>
+    <div class="field-row"><label>direct_hdhomerun_ip</label><input type="text" id="f-tuner_direct_hdhomerun_ip"></div>
+
+    <div class="section-hdr">Tunarr
+      <span class="restart">all fields require restart</span>
+    </div>
+    <div class="field-row"><label>enabled</label><input type="checkbox" id="f-tunarr_enabled"></div>
+    <div class="field-row"><label>host</label><input type="text" id="f-tunarr_host"></div>
+    <div class="field-row"><label>port</label><input type="number" id="f-tunarr_port"></div>
+    <div class="field-row"><label>use_tunarr_only</label><input type="checkbox" id="f-tunarr_use_tunarr_only"></div>
+    <div class="field-row"><label>http_timeout_seconds</label><input type="number" id="f-tunarr_http_timeout_seconds"></div>
+
+    <button type="button" class="save-btn" onclick="saveConfig()">Save</button>
+  </form>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+var logEntries = [];
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'config') { loadConfig(); }
+}
+
+function pollStats() {
+  fetch('/api/stats').then(function(r) {
+    if (!r.ok) { return; }
+    return r.json();
+  }).then(function(s) {
+    if (!s) { return; }
+    document.getElementById('s-udp').textContent = s.ActiveUDP;
+    document.getElementById('s-dial').textContent = s.ActiveDial;
+    document.getElementById('s-total').textContent = s.ActiveUDP + s.ActiveDial;
+
+    var panel = document.getElementById('backends-panel');
+    var list = document.getElementById('backends-list');
+    if (s.DirectHDHRIP || s.TunarrConfigured) {
+      panel.style.display = '';
+      while (list.firstChild) { list.removeChild(list.firstChild); }
+      if (s.DirectHDHRIP) {
+        var row = document.createElement('div');
+        row.className = 'backend-row';
+        var dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.textContent = '● ';
+        row.appendChild(dot);
+        row.appendChild(document.createTextNode('HDHR ' + s.DirectHDHRIP));
+        list.appendChild(row);
+      }
+      if (s.TunarrConfigured) {
+        var row2 = document.createElement('div');
+        row2.className = 'backend-row';
+        var dot2 = document.createElement('span');
+        dot2.className = 'dot';
+        dot2.textContent = '● ';
+        row2.appendChild(dot2);
+        row2.appendChild(document.createTextNode('Tunarr :' + s.TunarrPort));
+        list.appendChild(row2);
+      }
+    } else {
+      panel.style.display = 'none';
+    }
+  }).catch(function() {});
+}
+
+function pollLogs() {
+  fetch('/api/logs').then(function(r) {
+    if (!r.ok) { return; }
+    return r.json();
+  }).then(function(data) {
+    if (!data) { return; }
+    logEntries = data;
+    rerenderLog();
+  }).catch(function() {});
+}
+
+function rerenderLog() {
+  var showDebug = document.getElementById('show-debug').checked;
+  var tbody = document.getElementById('log-tbody');
+  while (tbody.firstChild) { tbody.removeChild(tbody.firstChild); }
+  logEntries.forEach(function(e) {
+    if (!showDebug && e.level === 'DEBUG') { return; }
+    var tr = document.createElement('tr');
+    var tdTs = document.createElement('td');
+    tdTs.className = 'ts';
+    tdTs.textContent = e.time;
+    var tdLv = document.createElement('td');
+    tdLv.className = 'lv-' + e.level;
+    tdLv.textContent = e.level;
+    var tdMsg = document.createElement('td');
+    tdMsg.textContent = e.msg;
+    if (e.attrs) {
+      var sp = document.createElement('span');
+      sp.style.color = '#555';
+      sp.textContent = ' ' + e.attrs;
+      tdMsg.appendChild(sp);
+    }
+    tr.appendChild(tdTs);
+    tr.appendChild(tdLv);
+    tr.appendChild(tdMsg);
+    tbody.appendChild(tr);
+  });
+  var wrap = document.getElementById('log-wrap');
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function loadConfig() {
+  fetch('/api/config').then(function(r) {
+    if (!r.ok) { return; }
+    return r.json();
+  }).then(function(data) {
+    if (!data) { return; }
+    var c = data.config;
+    document.getElementById('no-file-banner').style.display = data.has_file ? 'none' : '';
+    document.getElementById('f-hdhomerun_port').value = c.hdhomerun_port;
+    document.getElementById('f-tcp_port').value = c.tcp_port;
+    document.getElementById('f-udp_read_timeout_ms').value = c.udp_read_timeout_ms;
+    document.getElementById('f-udp_read_buffer_size').value = c.udp_read_buffer_size;
+    document.getElementById('f-reconnect_interval_seconds').value = c.reconnect_interval_seconds;
+    document.getElementById('f-debug').checked = c.debug;
+    document.getElementById('f-log_active_connections_interval_seconds').value = c.log_active_connections_interval_seconds;
+    var app = c.app || {};
+    document.getElementById('f-app_bind_address').value = app.bind_address || '';
+    document.getElementById('f-app_direct_hdhomerun_ip').value = app.direct_hdhomerun_ip || '';
+    var tuner = c.tuner || {};
+    document.getElementById('f-tuner_app_proxy_host').value = tuner.app_proxy_host || '';
+    document.getElementById('f-tuner_direct_mode').checked = !!tuner.direct_mode;
+    document.getElementById('f-tuner_direct_hdhomerun_ip').value = tuner.direct_hdhomerun_ip || '';
+    var tunarr = c.tunarr || {};
+    document.getElementById('f-tunarr_enabled').checked = !!tunarr.enabled;
+    document.getElementById('f-tunarr_host').value = tunarr.host || '';
+    document.getElementById('f-tunarr_port').value = tunarr.port || 0;
+    document.getElementById('f-tunarr_use_tunarr_only').checked = !!tunarr.use_tunarr_only;
+    document.getElementById('f-tunarr_http_timeout_seconds').value = tunarr.http_timeout_seconds || 0;
+  }).catch(function() {});
+}
+
+function saveConfig() {
+  function iv(id) { return document.getElementById(id).value; }
+  function ic(id) { return document.getElementById(id).checked; }
+  var cfg = {
+    hdhomerun_port: parseInt(iv('f-hdhomerun_port')) || 0,
+    tcp_port: parseInt(iv('f-tcp_port')) || 0,
+    udp_read_timeout_ms: parseInt(iv('f-udp_read_timeout_ms')) || 0,
+    udp_read_buffer_size: parseInt(iv('f-udp_read_buffer_size')) || 0,
+    reconnect_interval_seconds: parseInt(iv('f-reconnect_interval_seconds')) || 0,
+    debug: ic('f-debug'),
+    log_active_connections_interval_seconds: parseInt(iv('f-log_active_connections_interval_seconds')) || 0,
+    app: {
+      bind_address: iv('f-app_bind_address'),
+      direct_hdhomerun_ip: iv('f-app_direct_hdhomerun_ip')
+    },
+    tuner: {
+      app_proxy_host: iv('f-tuner_app_proxy_host'),
+      direct_mode: ic('f-tuner_direct_mode'),
+      direct_hdhomerun_ip: iv('f-tuner_direct_hdhomerun_ip')
+    },
+    tunarr: {
+      enabled: ic('f-tunarr_enabled'),
+      host: iv('f-tunarr_host'),
+      port: parseInt(iv('f-tunarr_port')) || 0,
+      use_tunarr_only: ic('f-tunarr_use_tunarr_only'),
+      http_timeout_seconds: parseInt(iv('f-tunarr_http_timeout_seconds')) || 0
+    }
+  };
+  fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(cfg)
+  }).then(function(r) {
+    return r.json();
+  }).then(function(data) {
+    if (data.ok) { showToast('Config saved', 'ok'); }
+    else { showToast('Error: ' + data.error, 'err'); }
+  }).catch(function(e) {
+    showToast('Error: ' + e.message, 'err');
+  });
+}
+
+function showToast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type;
+  t.style.display = 'block';
+  setTimeout(function() { t.style.display = 'none'; }, 3000);
+}
+
+setInterval(pollStats, 1000);
+setInterval(pollLogs, 1000);
+pollStats();
+pollLogs();
+</script>
+</body>
+</html>
