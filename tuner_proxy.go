@@ -56,6 +56,10 @@ func (tp *TunerProxy) Run(ctx context.Context, appProxyHostOrIP string, isDirect
 		}
 	}
 
+	if store.Get().LogActiveConnectionsInterval > 0 {
+		go tp.logActiveConnections(ctx, store)
+	}
+
 	if isDirectMode {
 		tp.directHDHRIP = appProxyHostOrIP
 		return tp.runDirectMode(ctx, cfg)
@@ -90,11 +94,6 @@ func (tp *TunerProxy) runDirectMode(ctx context.Context, cfg *Config) error {
 	tp.udpMutex.Unlock()
 
 	slog.Info("Tuner proxy listening for broadcasts (direct mode)", "bind_addr", bindAddr, "direct_hdhomerun_ip", tp.directHDHRIP)
-
-	// Start connection logging goroutine if configured
-	if cfg.LogActiveConnectionsInterval > 0 {
-		go tp.logActiveConnections(ctx, cfg.LogActiveConnectionsInterval)
-	}
 
 	buf := make([]byte, UDPReadBufferSize)
 
@@ -157,11 +156,6 @@ func (tp *TunerProxy) runTunerProxyMode(ctx context.Context, appProxyHost string
 	tp.udpMutex.Unlock()
 
 	slog.Info("Tuner proxy listening for broadcasts", "addr", bindAddr, "port", HDHomeRunDiscoveryUDPPort)
-
-	// Start connection logging goroutine if configured
-	if cfg.LogActiveConnectionsInterval > 0 {
-		go tp.logActiveConnections(ctx, cfg.LogActiveConnectionsInterval)
-	}
 
 	// Start UDP listener goroutine
 	go tp.handleUDPBroadcasts(ctx)

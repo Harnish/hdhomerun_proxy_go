@@ -140,7 +140,8 @@ func (br *backendRouter) forwardToDirectHDHR(queryData []byte, appAddr *net.UDPA
 	}
 }
 
-func (br *backendRouter) logActiveConnections(ctx context.Context, intervalSeconds int) {
+func (br *backendRouter) logActiveConnections(ctx context.Context, store *configStore) {
+	intervalSeconds := store.Get().LogActiveConnectionsInterval
 	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
 	defer ticker.Stop()
 
@@ -149,6 +150,10 @@ func (br *backendRouter) logActiveConnections(ctx context.Context, intervalSecon
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if newInterval := store.Get().LogActiveConnectionsInterval; newInterval != intervalSeconds {
+				intervalSeconds = newInterval
+				ticker.Reset(time.Duration(intervalSeconds) * time.Second)
+			}
 			br.activeConnectionsMutex.Lock()
 			udpCount := br.activeUDPConnections
 			dialCount := br.activeDialConnections

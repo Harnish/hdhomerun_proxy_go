@@ -57,6 +57,10 @@ func (ap *AppProxy) Run(ctx context.Context, bindAddr, directIP string, store *c
 		}
 	}
 
+	if store.Get().LogActiveConnectionsInterval > 0 {
+		go ap.logActiveConnections(ctx, store)
+	}
+
 	if directIP != "" || (ap.tunarr != nil && ap.useTunarrOnly) {
 		// Direct mode: listen for UDP broadcasts and proxy to the HDHomeRun/Tunarr directly
 		return ap.runDirectMode(ctx, bindAddr, cfg)
@@ -85,11 +89,6 @@ func (ap *AppProxy) runDirectMode(ctx context.Context, bindAddr string, cfg *Con
 	defer conn.Close()
 
 	slog.Info("App proxy listening for UDP broadcasts", "addr", addr, "direct_hdhomerun_ip", ap.directHDHRIP)
-
-	// Start connection logging goroutine if configured
-	if cfg.LogActiveConnectionsInterval > 0 {
-		go ap.logActiveConnections(ctx, cfg.LogActiveConnectionsInterval)
-	}
 
 	buf := make([]byte, UDPReadBufferSize)
 
