@@ -129,14 +129,28 @@ func runAppProxy(args []string, cfg *Config, tuiMode bool) {
 }
 
 func runTunerProxy(args []string, cfg *Config, tuiMode bool) {
-	if len(args) < 1 || len(args) > 2 {
-		fmt.Fprintf(os.Stderr, "Error: tuner mode requires host argument\n")
-		fmt.Fprintf(os.Stderr, "Usage: %s tuner <app_proxy_host_or_hdhomerun_ip> [-direct]\n", os.Args[0])
+	if len(args) > 2 {
+		fmt.Fprintf(os.Stderr, "Error: too many arguments for tuner mode\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s [-flags] tuner [<host>] [-direct]\n", os.Args[0])
 		os.Exit(1)
 	}
 
-	hostOrIP := args[0]
-	isDirectMode := len(args) == 2 && args[1] == "-direct"
+	// Detect flags placed after the mode (e.g. "tuner -config file.json") — flag
+	// parsing stops at the first non-flag word, so they land in args instead.
+	if len(args) >= 1 && len(args[0]) > 0 && args[0][0] == '-' {
+		fmt.Fprintf(os.Stderr, "Error: flags must appear before the mode, e.g.:\n")
+		fmt.Fprintf(os.Stderr, "  %s -config file.json tuner <host>\n", os.Args[0])
+		os.Exit(1)
+	}
+
+	var hostOrIP string
+	isDirectMode := false
+	if len(args) >= 1 {
+		hostOrIP = args[0]
+	}
+	if len(args) == 2 {
+		isDirectMode = args[1] == "-direct"
+	}
 
 	if hostOrIP == "" {
 		if isDirectMode && cfg.Tuner.DirectHDHRIP != "" {
@@ -151,6 +165,12 @@ func runTunerProxy(args []string, cfg *Config, tuiMode bool) {
 		if hostOrIP == "" && cfg.Tuner.DirectHDHRIP != "" {
 			hostOrIP = cfg.Tuner.DirectHDHRIP
 		}
+	}
+
+	if hostOrIP == "" {
+		fmt.Fprintf(os.Stderr, "Error: no host specified and none found in config\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s [-config file.json] tuner <host> [-direct]\n", os.Args[0])
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
