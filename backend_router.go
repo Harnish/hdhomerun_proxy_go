@@ -152,7 +152,11 @@ func (br *backendRouter) logActiveConnections(ctx context.Context, store *config
 		case <-ticker.C:
 			if newInterval := store.Get().LogActiveConnectionsInterval; newInterval != intervalSeconds {
 				intervalSeconds = newInterval
-				ticker.Reset(time.Duration(intervalSeconds) * time.Second)
+				if newInterval > 0 {
+					ticker.Reset(time.Duration(intervalSeconds) * time.Second)
+				} else {
+					return
+				}
 			}
 			br.activeConnectionsMutex.Lock()
 			udpCount := br.activeUDPConnections

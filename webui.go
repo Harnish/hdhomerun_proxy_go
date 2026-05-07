@@ -119,6 +119,11 @@ func (ws *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}) //nolint:errcheck
 			return
 		}
+		if newCfg.HDHomeRunPort == 0 || newCfg.TCPPort == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid config: hdhomerun_port and tcp_port must be non-zero"}) //nolint:errcheck
+			return
+		}
 		if err := ws.store.Set(&newCfg); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}) //nolint:errcheck

@@ -152,6 +152,29 @@ func TestWebServerPostConfig(t *testing.T) {
 	}
 }
 
+func TestWebServerPostConfigInvalid(t *testing.T) {
+	_, srv := makeTestServer(t)
+	// Posting a config with zero ports should be rejected
+	body := `{"hdhomerun_port": 0, "tcp_port": 0}`
+	req, _ := http.NewRequest("POST", srv.URL+"/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth("testuser", "testpass")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result["error"] == "" {
+		t.Error("expected error message")
+	}
+}
+
 func TestWebServerLogsWithEntry(t *testing.T) {
 	resetLogRingBuf()
 	appendLogEntry(logEntry{
