@@ -53,6 +53,8 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
+	store := newConfigStore(cfg, configFile)
+
 	if len(args) < 1 {
 		printUsage()
 		os.Exit(1)
@@ -62,9 +64,9 @@ func main() {
 
 	switch mode {
 	case "app":
-		runAppProxy(args[1:], cfg, tuiMode)
+		runAppProxy(args[1:], store, tuiMode)
 	case "tuner":
-		runTunerProxy(args[1:], cfg, tuiMode)
+		runTunerProxy(args[1:], store, tuiMode)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown mode: %s\n", mode)
 		printUsage()
@@ -85,7 +87,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "Generate template with: %s -template\n", os.Args[0])
 }
 
-func runAppProxy(args []string, cfg *Config, tuiMode bool) {
+func runAppProxy(args []string, store *configStore, tuiMode bool) {
+	cfg := store.Get()
 	var bindAddr, directIP string
 
 	if len(args) > 0 {
@@ -117,18 +120,19 @@ func runAppProxy(args []string, cfg *Config, tuiMode bool) {
 
 	if tuiMode {
 		runWithTUI(ctx, cancel, proxy, func() error {
-			return proxy.Run(ctx, bindAddr, directIP, cfg)
+			return proxy.Run(ctx, bindAddr, directIP, store)
 		})
 		return
 	}
 
-	if err := proxy.Run(ctx, bindAddr, directIP, cfg); err != nil {
+	if err := proxy.Run(ctx, bindAddr, directIP, store); err != nil {
 		slog.Error("App proxy error", "err", err)
 		os.Exit(1)
 	}
 }
 
-func runTunerProxy(args []string, cfg *Config, tuiMode bool) {
+func runTunerProxy(args []string, store *configStore, tuiMode bool) {
+	cfg := store.Get()
 	if len(args) > 2 {
 		fmt.Fprintf(os.Stderr, "Error: too many arguments for tuner mode\n")
 		fmt.Fprintf(os.Stderr, "Usage: %s [-flags] tuner [<host>] [-direct]\n", os.Args[0])
@@ -188,12 +192,12 @@ func runTunerProxy(args []string, cfg *Config, tuiMode bool) {
 
 	if tuiMode {
 		runWithTUI(ctx, cancel, proxy, func() error {
-			return proxy.Run(ctx, hostOrIP, isDirectMode, cfg)
+			return proxy.Run(ctx, hostOrIP, isDirectMode, store)
 		})
 		return
 	}
 
-	if err := proxy.Run(ctx, hostOrIP, isDirectMode, cfg); err != nil {
+	if err := proxy.Run(ctx, hostOrIP, isDirectMode, store); err != nil {
 		slog.Error("Tuner proxy error", "err", err)
 		os.Exit(1)
 	}

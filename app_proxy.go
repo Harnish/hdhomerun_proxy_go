@@ -39,7 +39,8 @@ func NewAppProxy() *AppProxy {
 // bindAddr: address to listen on (e.g., "0.0.0.0" or "192.168.1.5")
 // directIP: if provided, listen for UDP broadcasts and proxy directly to this HDHomeRun IP
 // cfg: configuration object for tuning parameters
-func (ap *AppProxy) Run(ctx context.Context, bindAddr, directIP string, cfg *Config) error {
+func (ap *AppProxy) Run(ctx context.Context, bindAddr, directIP string, store *configStore) error {
+	cfg := store.Get()
 	ap.directHDHRIP = directIP
 	ap.useTunarrOnly = cfg.Tunarr.UseTunarrOnly
 

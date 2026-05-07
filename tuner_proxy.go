@@ -39,7 +39,8 @@ func NewTunerProxy() *TunerProxy {
 // appProxyHostOrIP: app proxy hostname (tuner proxy mode) or HDHomeRun IP (direct mode)
 // isDirectMode: if true, appProxyHostOrIP is treated as direct HDHomeRun IP
 // cfg: configuration object for tuning parameters
-func (tp *TunerProxy) Run(ctx context.Context, appProxyHostOrIP string, isDirectMode bool, cfg *Config) error {
+func (tp *TunerProxy) Run(ctx context.Context, appProxyHostOrIP string, isDirectMode bool, store *configStore) error {
+	cfg := store.Get()
 	tp.useTunarrOnly = cfg.Tunarr.UseTunarrOnly
 
 	// Initialize Tunarr backend if enabled
