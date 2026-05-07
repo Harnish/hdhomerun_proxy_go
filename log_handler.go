@@ -22,7 +22,7 @@ type logMsg struct{ entry logEntry }
 const logRingBufCap = 200
 
 var (
-	logRingMu  sync.Mutex
+	logRingMu  sync.RWMutex
 	logRingBuf []logEntry
 )
 
@@ -36,8 +36,8 @@ func appendLogEntry(e logEntry) {
 }
 
 func getLogEntries() []logEntry {
-	logRingMu.Lock()
-	defer logRingMu.Unlock()
+	logRingMu.RLock()
+	defer logRingMu.RUnlock()
 	out := make([]logEntry, len(logRingBuf))
 	copy(out, logRingBuf)
 	return out
