@@ -186,6 +186,8 @@ function pollLogs() {
 
 function rerenderLog() {
   var showDebug = document.getElementById('show-debug').checked;
+  var wrap = document.getElementById('log-wrap');
+  var atBottom = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 2;
   var tbody = document.getElementById('log-tbody');
   while (tbody.firstChild) { tbody.removeChild(tbody.firstChild); }
   logEntries.forEach(function(e) {
@@ -195,7 +197,8 @@ function rerenderLog() {
     tdTs.className = 'ts';
     tdTs.textContent = e.time;
     var tdLv = document.createElement('td');
-    tdLv.className = 'lv-' + e.level;
+    var knownLevels = {INFO: 1, WARN: 1, ERROR: 1, DEBUG: 1};
+    tdLv.className = knownLevels[e.level] ? 'lv-' + e.level : 'lv-INFO';
     tdLv.textContent = e.level;
     var tdMsg = document.createElement('td');
     tdMsg.textContent = e.msg;
@@ -210,8 +213,7 @@ function rerenderLog() {
     tr.appendChild(tdMsg);
     tbody.appendChild(tr);
   });
-  var wrap = document.getElementById('log-wrap');
-  wrap.scrollTop = wrap.scrollHeight;
+  if (atBottom) { wrap.scrollTop = wrap.scrollHeight; }
 }
 
 function loadConfig() {
@@ -278,8 +280,10 @@ function saveConfig() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(cfg)
   }).then(function(r) {
+    if (!r.ok) { showToast('Server error ' + r.status, 'err'); return null; }
     return r.json();
   }).then(function(data) {
+    if (!data) { return; }
     if (data.ok) { showToast('Config saved', 'ok'); }
     else { showToast('Error: ' + data.error, 'err'); }
   }).catch(function(e) {
