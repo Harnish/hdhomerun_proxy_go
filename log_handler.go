@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -65,6 +67,13 @@ func (h *tuiHandler) Handle(_ context.Context, r slog.Record) error {
 	appendLogEntry(e)
 	if h.program != nil {
 		h.program.Send(logMsg{entry: e})
+	} else {
+		// Write to stderr when running in webui-only mode (program == nil).
+		fmt.Fprintf(os.Stderr, "%s %s %s", e.Time.Format("15:04:05"), e.Level, e.Msg)
+		if e.Attrs != "" {
+			fmt.Fprintf(os.Stderr, " %s", e.Attrs)
+		}
+		fmt.Fprintln(os.Stderr)
 	}
 	return nil
 }
