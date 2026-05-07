@@ -178,16 +178,18 @@ func (cs *configStore) Get() *Config {
 
 // Set saves newCfg to disk (if filePath is set) and updates the in-memory config.
 func (cs *configStore) Set(newCfg *Config) error {
+	cs.mu.Lock()
 	if cs.filePath != "" {
 		data, err := json.MarshalIndent(newCfg, "", "  ")
 		if err != nil {
+			cs.mu.Unlock()
 			return fmt.Errorf("failed to marshal config: %w", err)
 		}
 		if err := os.WriteFile(cs.filePath, data, 0644); err != nil {
+			cs.mu.Unlock()
 			return fmt.Errorf("failed to write config: %w", err)
 		}
 	}
-	cs.mu.Lock()
 	cs.cfg = newCfg
 	cs.mu.Unlock()
 	cs.ApplyLive(newCfg)

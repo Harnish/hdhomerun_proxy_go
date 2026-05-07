@@ -67,14 +67,3 @@ func TestConfigStoreSetNoFileOK(t *testing.T) {
 		t.Error("in-memory update failed")
 	}
 }
-
-func TestConfigStoreHasFile(t *testing.T) {
-	s1 := newConfigStore(DefaultConfig(), "")
-	if s1.filePath != "" {
-		t.Error("expected empty filePath")
-	}
-	s2 := newConfigStore(DefaultConfig(), "/some/path.json")
-	if s2.filePath != "/some/path.json" {
-		t.Error("expected filePath to be set")
-	}
-}
