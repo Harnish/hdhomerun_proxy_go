@@ -21,7 +21,6 @@ type tickMsg time.Time
 
 const (
 	sidebarInnerWidth = 22
-	ringBufCap        = 200
 )
 
 var (
@@ -62,7 +61,6 @@ var (
 type tuiModel struct {
 	proxy     statsProvider
 	stats     ProxyStats
-	logBuf    []logEntry
 	showDebug bool
 	vp        viewport.Model
 	ready     bool
@@ -74,7 +72,6 @@ func newTuiModel(proxy statsProvider) tuiModel {
 	return tuiModel{
 		proxy:     proxy,
 		showDebug: true,
-		logBuf:    make([]logEntry, 0, ringBufCap),
 	}
 }
 
@@ -107,10 +104,6 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tick())
 
 	case logMsg:
-		m.logBuf = append(m.logBuf, msg.entry)
-		if len(m.logBuf) > ringBufCap {
-			m.logBuf = m.logBuf[len(m.logBuf)-ringBufCap:]
-		}
 		m.vp.SetContent(m.renderLogContent())
 		m.vp.GotoBottom()
 
@@ -179,19 +172,19 @@ func (m tuiModel) renderSidebar() string {
 
 func (m tuiModel) renderLogContent() string {
 	var lines []string
-	for _, e := range m.logBuf {
-		if e.level == slog.LevelDebug && !m.showDebug {
+	for _, e := range getLogEntries() {
+		if e.Level == slog.LevelDebug && !m.showDebug {
 			continue
 		}
-		ls, ok := levelStyles[e.level]
+		ls, ok := levelStyles[e.Level]
 		if !ok {
 			ls = valueStyle
 		}
-		levelStr := ls.Render(fmt.Sprintf("%-5s", e.level.String()))
-		ts := dimStyle.Render(e.t.Format("15:04:05"))
-		line := fmt.Sprintf("%s %s %s", ts, levelStr, e.msg)
-		if e.attrs != "" {
-			line += " " + dimStyle.Render(e.attrs)
+		levelStr := ls.Render(fmt.Sprintf("%-5s", e.Level.String()))
+		ts := dimStyle.Render(e.Time.Format("15:04:05"))
+		line := fmt.Sprintf("%s %s %s", ts, levelStr, e.Msg)
+		if e.Attrs != "" {
+			line += " " + dimStyle.Render(e.Attrs)
 		}
 		lines = append(lines, line)
 	}
