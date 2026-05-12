@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -15,15 +16,18 @@ type AppProxy struct {
 	codec        *MessageCodec
 	tcpTransport net.Conn
 	tcpMutex     sync.Mutex
+	hdhrServer   *HDHREndpointServer
+	httpServer   *http.Server
 	backendRouter
 }
 
 // NewAppProxy creates a new AppProxy
-func NewAppProxy() *AppProxy {
+func NewAppProxy(store *configStore) *AppProxy {
 	return &AppProxy{
 		codec: NewMessageCodec(),
 		backendRouter: backendRouter{
-			name: "AppProxy",
+			name:  "AppProxy",
+			store: store,
 			resolveLocalIP: func(appAddr *net.UDPAddr) string {
 				ip, err := GetLocalIPForConnection(appAddr.IP.String() + ":65001")
 				if err != nil {
@@ -56,6 +60,12 @@ func (ap *AppProxy) Run(ctx context.Context, bindAddr, directIP string, store *c
 			}
 		}
 	}
+
+	// Initialize HDHR endpoint server for discovery endpoints
+	ap.hdhrServer = NewHDHREndpointServer(store, ap)
+
+	// Start HTTP server on port 5004 for HDHR discovery endpoints
+	go ap.startHDHRHTTPServer(ctx, bindAddr)
 
 	if store.Get().LogActiveConnectionsInterval > 0 {
 		go ap.logActiveConnections(ctx, store)
@@ -292,3 +302,31 @@ func (ap *AppProxy) reply(sourceAddr []byte, sourcePort uint16, replyData []byte
 	}
 }
 
+// startHDHRHTTPServer starts the HTTP server for HDHR endpoints on port 5004
+func (ap *AppProxy) startHDHRHTTPServer(ctx context.Context, bindAddr string) {
+if ap.hdhrServer == nil {
+return
+}
+
+addr := net.JoinHostPort(bindAddr, "5004")
+ap.httpServer = &http.Server{
+Addr:    addr,
+Handler: ap.hdhrServer.Handler(),
+}
+
+slog.Info("HDHR endpoint server listening", "addr", addr)
+
+// Shutdown on context cancellation
+go func() {
+<-ctx.Done()
+if ap.httpServer != nil {
+shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+ap.httpServer.Shutdown(shutCtx) //nolint:errcheck
+}
+}()
+
+if err := ap.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+slog.Error("HDHR endpoint server error", "err", err)
+}
+}

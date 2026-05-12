@@ -1,0 +1,75 @@
+<h2>Web UI Layout</h2>
+<p class="subtitle">Choose the overall page structure for the web interface</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Tabbed — Status &amp; Config</h3>
+      <p>Two tabs at the top. Status tab shows live stats + log. Config tab shows the full config form.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">HDHomeRun Proxy</div>
+        <div class="mockup-body" style="padding:0">
+          <div style="display:flex;gap:0;border-bottom:1px solid #333">
+            <div style="padding:8px 20px;background:#2a2a2a;border-bottom:2px solid #7c6af7;font-size:12px;color:#c9b8ff">● Status</div>
+            <div style="padding:8px 20px;font-size:12px;color:#666">⚙ Config</div>
+          </div>
+          <div style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="background:#1e1e1e;border-radius:6px;padding:10px">
+              <div style="font-size:10px;color:#7c6af7;font-weight:bold;margin-bottom:6px">CONNECTIONS</div>
+              <div style="font-size:11px;color:#aaa">UDP &nbsp;&nbsp;0</div>
+              <div style="font-size:11px;color:#aaa">Dial &nbsp;0</div>
+              <div style="font-size:11px;color:#aaa">Total 0</div>
+            </div>
+            <div style="background:#1e1e1e;border-radius:6px;padding:10px">
+              <div style="font-size:10px;color:#7c6af7;font-weight:bold;margin-bottom:6px">BACKENDS</div>
+              <div style="font-size:11px;color:#aaa">● HDHR 192.168.1.50</div>
+              <div style="font-size:11px;color:#aaa">● Tunarr :8000</div>
+            </div>
+          </div>
+          <div style="margin:0 12px 12px;background:#1e1e1e;border-radius:6px;padding:10px;height:60px;overflow:hidden">
+            <div style="font-size:10px;color:#7c6af7;font-weight:bold;margin-bottom:6px">LOG</div>
+            <div style="font-size:10px;color:#888;font-family:monospace">12:00:01 INFO  Proxy started</div>
+            <div style="font-size:10px;color:#888;font-family:monospace">12:00:02 INFO  Listening on :65001</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Split — Stats sidebar + Config main</h3>
+      <p>Persistent status sidebar on the left. Main area switches between Config form and Log viewer.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">HDHomeRun Proxy</div>
+        <div class="mockup-body" style="padding:0;display:flex;min-height:160px">
+          <div style="width:130px;background:#1a1a1a;padding:10px;border-right:1px solid #333;flex-shrink:0">
+            <div style="font-size:10px;color:#7c6af7;font-weight:bold;margin-bottom:4px">CONNECTIONS</div>
+            <div style="font-size:10px;color:#aaa">UDP &nbsp;&nbsp;0</div>
+            <div style="font-size:10px;color:#aaa">Dial &nbsp;0</div>
+            <div style="margin-top:8px;font-size:10px;color:#7c6af7;font-weight:bold;margin-bottom:4px">BACKENDS</div>
+            <div style="font-size:10px;color:#aaa">● HDHR</div>
+            <div style="font-size:10px;color:#aaa">● Tunarr</div>
+            <div style="margin-top:12px;border-top:1px solid #333;padding-top:8px">
+              <div style="font-size:10px;color:#888;cursor:pointer">⚙ Config</div>
+              <div style="font-size:10px;color:#888;cursor:pointer">📋 Logs</div>
+            </div>
+          </div>
+          <div style="flex:1;padding:12px">
+            <div style="font-size:11px;color:#888;margin-bottom:8px">App Settings</div>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+              <div style="font-size:10px;color:#666;width:80px">Bind Address</div>
+              <div style="background:#2a2a2a;border-radius:3px;padding:2px 6px;font-size:10px;color:#aaa;flex:1">0.0.0.0</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <div style="font-size:10px;color:#666;width:80px">HDHR IP</div>
+              <div style="background:#2a2a2a;border-radius:3px;padding:2px 6px;font-size:10px;color:#aaa;flex:1">192.168.1.50</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

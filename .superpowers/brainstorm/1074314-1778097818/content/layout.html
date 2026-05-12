@@ -1,0 +1,120 @@
+<h2>TUI Layout Options</h2>
+<p class="subtitle">Which layout works best for an always-on terminal dashboard?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="card-image">
+      <div style="font-family:monospace;font-size:11px;background:#1a1a1a;color:#d4d4d4;padding:10px;border-radius:4px;line-height:1.5">
+        <div style="color:#569cd6;border-bottom:1px solid #444;padding-bottom:4px;margin-bottom:6px">HDHomeRun Proxy — AppProxy  [65001]</div>
+        <div style="display:flex;gap:12px;margin-bottom:6px">
+          <div style="flex:1;background:#252525;padding:6px;border-radius:3px">
+            <div style="color:#9cdcfe;font-size:10px">CONNECTIONS</div>
+            <div>UDP:  <span style="color:#4ec9b0">2</span>  Dial: <span style="color:#4ec9b0">1</span>  Total: <span style="color:#4ec9b0">3</span></div>
+          </div>
+          <div style="flex:1;background:#252525;padding:6px;border-radius:3px">
+            <div style="color:#9cdcfe;font-size:10px">BACKENDS</div>
+            <div>HDHR: <span style="color:#4ec9b0">●</span>  Tunarr: <span style="color:#4ec9b0">●</span></div>
+          </div>
+          <div style="flex:1;background:#252525;padding:6px;border-radius:3px">
+            <div style="color:#9cdcfe;font-size:10px">MODE</div>
+            <div style="color:#ce9178">Direct + Tunarr</div>
+          </div>
+        </div>
+        <div style="background:#252525;padding:6px;border-radius:3px;height:80px;overflow:hidden">
+          <div style="color:#9cdcfe;font-size:10px;margin-bottom:3px">LOG</div>
+          <div style="color:#6a9955">2025/01/06 12:34:01 INFO Tunarr backend available host=tunarr port=8000</div>
+          <div style="color:#d4d4d4">2025/01/06 12:34:02 INFO App proxy listening addr=0.0.0.0:65001</div>
+          <div style="color:#d4d4d4">2025/01/06 12:34:10 INFO Tuner proxy connected addr=192.168.1.50:54312</div>
+          <div style="color:#569cd6">2025/01/06 12:34:11 DEBUG Request received from app bytes=20</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Stacked Panels</h3>
+      <p>Stats row at top, full-width log at bottom. Maximum log visibility. Simple layout.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="card-image">
+      <div style="font-family:monospace;font-size:11px;background:#1a1a1a;color:#d4d4d4;padding:10px;border-radius:4px;line-height:1.5">
+        <div style="color:#569cd6;border-bottom:1px solid #444;padding-bottom:4px;margin-bottom:6px">HDHomeRun Proxy — AppProxy  [65001]</div>
+        <div style="display:flex;gap:8px">
+          <div style="width:140px;flex-shrink:0">
+            <div style="background:#252525;padding:6px;border-radius:3px;margin-bottom:6px">
+              <div style="color:#9cdcfe;font-size:10px">CONNECTIONS</div>
+              <div>UDP:  <span style="color:#4ec9b0">2</span></div>
+              <div>Dial: <span style="color:#4ec9b0">1</span></div>
+              <div>Total: <span style="color:#4ec9b0">3</span></div>
+            </div>
+            <div style="background:#252525;padding:6px;border-radius:3px;margin-bottom:6px">
+              <div style="color:#9cdcfe;font-size:10px">BACKENDS</div>
+              <div><span style="color:#4ec9b0">●</span> HDHR</div>
+              <div><span style="color:#4ec9b0">●</span> Tunarr :8000</div>
+            </div>
+            <div style="background:#252525;padding:6px;border-radius:3px">
+              <div style="color:#9cdcfe;font-size:10px">MODE</div>
+              <div style="color:#ce9178">Direct</div>
+              <div style="color:#ce9178">+ Tunarr</div>
+            </div>
+          </div>
+          <div style="flex:1;background:#252525;padding:6px;border-radius:3px;height:140px;overflow:hidden">
+            <div style="color:#9cdcfe;font-size:10px;margin-bottom:3px">LOG</div>
+            <div style="color:#6a9955">12:34:01 INFO Tunarr backend available</div>
+            <div style="color:#d4d4d4">12:34:02 INFO App proxy listening</div>
+            <div style="color:#d4d4d4">12:34:10 INFO Tuner proxy connected</div>
+            <div style="color:#569cd6">12:34:11 DEBUG Request received bytes=20</div>
+            <div style="color:#d4d4d4">12:34:11 DEBUG Reply received from tuner</div>
+            <div style="color:#d4d4d4">12:34:15 DEBUG Request received bytes=20</div>
+            <div style="color:#d7ba7d">12:34:20 WARN Tunarr backend not available</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Sidebar + Log</h3>
+      <p>Narrow left sidebar for stats, wide right panel for log. Most log space; stats always visible.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="card-image">
+      <div style="font-family:monospace;font-size:11px;background:#1a1a1a;color:#d4d4d4;padding:10px;border-radius:4px;line-height:1.5">
+        <div style="color:#569cd6;border-bottom:1px solid #444;padding-bottom:4px;margin-bottom:6px">HDHomeRun Proxy — AppProxy  [65001]</div>
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <div style="flex:1;background:#252525;padding:6px;border-radius:3px">
+            <div style="color:#9cdcfe;font-size:10px">CONNECTIONS</div>
+            <div>UDP: <span style="color:#4ec9b0">2</span>  Dial: <span style="color:#4ec9b0">1</span></div>
+          </div>
+          <div style="flex:1;background:#252525;padding:6px;border-radius:3px">
+            <div style="color:#9cdcfe;font-size:10px">BACKENDS</div>
+            <div><span style="color:#4ec9b0">●</span> HDHR  <span style="color:#4ec9b0">●</span> Tunarr</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1;background:#252525;padding:6px;border-radius:3px;height:80px;overflow:hidden">
+            <div style="color:#9cdcfe;font-size:10px;margin-bottom:3px">LOG — INFO</div>
+            <div style="color:#d4d4d4">12:34:02 App proxy listening</div>
+            <div style="color:#d4d4d4">12:34:10 Tuner proxy connected</div>
+            <div style="color:#d7ba7d">12:34:20 Tunarr not available</div>
+          </div>
+          <div style="flex:1;background:#252525;padding:6px;border-radius:3px;height:80px;overflow:hidden">
+            <div style="color:#9cdcfe;font-size:10px;margin-bottom:3px">LOG — DEBUG</div>
+            <div style="color:#569cd6">12:34:11 Request recv bytes=20</div>
+            <div style="color:#569cd6">12:34:11 Reply recv bytes=156</div>
+            <div style="color:#569cd6">12:34:15 Request recv bytes=20</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Split Log Panes</h3>
+      <p>Stats row at top, two log columns (INFO and DEBUG) side by side. Good for debug sessions.</p>
+    </div>
+  </div>
+
+</div>

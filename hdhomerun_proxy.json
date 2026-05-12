@@ -6,6 +6,13 @@
   "reconnect_interval_seconds": 3,
   "debug": true,
   "log_active_connections_interval_seconds": 60,
+  "device": {
+    "model_type": "",
+    "device_id": "",
+    "friendly_name": "",
+    "firmware_version": "",
+    "device_auth": ""
+  },
   "app": {
     "bind_address": "0.0.0.0",
     "direct_hdhomerun_ip": "192.168.1.50"
@@ -21,5 +28,10 @@
     "port": 80,
     "use_tunarr_only": false,
     "http_timeout_seconds": 5
+  },
+  "webui": {
+    "addr": ":8080",
+    "user": "jharnish",
+    "pass": "dilbert2"
   }
 }

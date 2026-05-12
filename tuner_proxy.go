@@ -23,11 +23,12 @@ type TunerProxy struct {
 }
 
 // NewTunerProxy creates a new TunerProxy
-func NewTunerProxy() *TunerProxy {
+func NewTunerProxy(store *configStore) *TunerProxy {
 	return &TunerProxy{
 		codec: NewMessageCodec(),
 		backendRouter: backendRouter{
-			name: "TunerProxy",
+			name:  "TunerProxy",
+			store: store,
 			resolveLocalIP: func(appAddr *net.UDPAddr) string {
 				return appAddr.IP.String()
 			},
@@ -352,4 +353,3 @@ func (tp *TunerProxy) onMessageReceivedFromAppProxy(msg []byte) {
 		slog.Error("Error sending reply", "err", err)
 	}
 }
-

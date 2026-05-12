@@ -161,7 +161,7 @@ func runAppProxy(args []string, store *configStore, tuiMode bool) {
 		cancel()
 	}()
 
-	proxy := NewAppProxy()
+	proxy := NewAppProxy(store)
 
 	if store.Get().WebUI.Addr != "" {
 		ws := newWebServer(store, proxy)
@@ -242,7 +242,7 @@ func runTunerProxy(args []string, store *configStore, tuiMode bool) {
 		cancel()
 	}()
 
-	proxy := NewTunerProxy()
+	proxy := NewTunerProxy(store)
 
 	if store.Get().WebUI.Addr != "" {
 		ws := newWebServer(store, proxy)

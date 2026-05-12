@@ -13,6 +13,7 @@ type backendRouter struct {
 	tunarr                 *TunarrBackend
 	useTunarrOnly          bool
 	directHDHRIP           string
+	store                  *configStore
 	activeConnectionsMutex sync.Mutex
 	activeUDPConnections   int
 	activeDialConnections  int
@@ -46,6 +47,58 @@ func (br *backendRouter) Stats() ProxyStats {
 	return s
 }
 
+func (br *backendRouter) buildDiscoveryPacket(srcIP string) []byte {
+	cfg := br.store.Get()
+
+	// Get device model info
+	modelType := cfg.Device.ModelType
+	if modelType == "" {
+		modelType = "HDFX-4K"
+	}
+
+	modelInfo, err := GetModelInfo(modelType)
+	if err != nil {
+		modelInfo, _ = GetModelInfo("HDFX-4K")
+	}
+
+	// Get or generate Device ID
+	deviceID := cfg.Device.DeviceID
+	if deviceID == "" {
+		deviceID = GenerateRealisticDeviceID(modelType)
+	}
+
+	// Get device auth
+	deviceAuth := cfg.Device.DeviceAuth
+	if deviceAuth == "" {
+		deviceAuth = "00000000"
+	}
+
+	// Get friendly name
+	friendlyName := cfg.Device.FriendlyName
+	if friendlyName == "" {
+		friendlyName = modelInfo.FriendlyName
+	}
+
+	// Get firmware version
+	firmwareVersion := cfg.Device.FirmwareVersion
+	if firmwareVersion == "" {
+		firmwareVersion = "20250825"
+	}
+
+	// Build the discovery response packet
+	response := fmt.Sprintf("Device: %s\r\n", modelInfo.ModelNumber)
+	response += fmt.Sprintf("DeviceID: %s\r\n", deviceID)
+	response += fmt.Sprintf("DeviceAuth: %s\r\n", deviceAuth)
+	response += fmt.Sprintf("BaseURL: http://%s:5004\r\n", srcIP)
+	response += fmt.Sprintf("LineupURL: http://%s:5004/lineup.json\r\n", srcIP)
+	response += fmt.Sprintf("TunerCount: %d\r\n", modelInfo.TunerCount)
+	response += fmt.Sprintf("FirmwareName: %s\r\n", modelInfo.FirmwareName)
+	response += fmt.Sprintf("FirmwareVersion: %s\r\n", firmwareVersion)
+	response += fmt.Sprintf("FriendlyName: %s\r\n", friendlyName)
+
+	return []byte(response)
+}
+
 func (br *backendRouter) forwardToBackend(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) {
 	if br.tunarr != nil {
 		if br.forwardToTunarr(queryData, appAddr, replyConn, ctx) {
@@ -65,26 +118,22 @@ func (br *backendRouter) forwardToBackend(queryData []byte, appAddr *net.UDPAddr
 func (br *backendRouter) forwardToTunarr(queryData []byte, appAddr *net.UDPAddr, replyConn *net.UDPConn, ctx context.Context) bool {
 	queryStr := string(queryData)
 	if queryStr == "TYPE: discover\r\n" || queryStr == "discover" {
-		info, err := br.tunarr.GetDiscoverInfo(ctx)
-		if err != nil {
-			slog.Error("Error getting Tunarr discovery info", "err", err)
-			return false
-		}
-
 		var localIP string
 		if br.resolveLocalIP != nil {
 			localIP = br.resolveLocalIP(appAddr)
 		} else {
 			localIP = appAddr.IP.String()
 		}
-		response := BuildHDHRDiscoveryPacket(info, br.tunarr.port, localIP)
-		_, err = replyConn.WriteToUDP(response, appAddr)
+
+		// Use the new discovery packet builder that includes Device ID
+		response := br.buildDiscoveryPacket(localIP)
+		_, err := replyConn.WriteToUDP(response, appAddr)
 		if err != nil {
-			slog.Error("Error sending Tunarr discovery response to app", "err", err)
+			slog.Error("Error sending discovery response to app", "err", err)
 			return false
 		}
 
-		slog.Debug("Tunarr discovery response sent", "bytes", len(response))
+		slog.Debug("Discovery response sent", "bytes", len(response), "device_id", br.store.Get().Device.DeviceID)
 		return true
 	}
 

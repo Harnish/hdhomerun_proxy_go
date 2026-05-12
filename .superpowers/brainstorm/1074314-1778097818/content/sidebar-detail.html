@@ -1,0 +1,72 @@
+<h2>Sidebar Content</h2>
+<p class="subtitle">Does this capture the right information? Click to select if it looks good.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)" style="max-width:900px;margin:0 auto">
+    <div class="card-image">
+      <div style="font-family:'Courier New',monospace;font-size:12px;background:#0d0d0d;color:#d4d4d4;padding:16px;border-radius:6px;display:flex;gap:0;line-height:1.6">
+
+        <!-- Sidebar -->
+        <div style="width:200px;flex-shrink:0;border:1px solid #444;border-radius:4px;padding:10px;margin-right:8px">
+          <div style="color:#569cd6;font-weight:bold;border-bottom:1px solid #333;padding-bottom:6px;margin-bottom:8px">HDHomeRun Proxy</div>
+
+          <div style="color:#888;font-size:10px;letter-spacing:1px;margin-bottom:4px">MODE</div>
+          <div style="color:#ce9178;margin-bottom:2px">AppProxy</div>
+          <div style="color:#888;font-size:11px;margin-bottom:12px">:65001  Direct+Tunarr</div>
+
+          <div style="color:#888;font-size:10px;letter-spacing:1px;margin-bottom:4px">CONNECTIONS</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+            <span style="color:#888">UDP</span><span style="color:#4ec9b0">2</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+            <span style="color:#888">Dial</span><span style="color:#4ec9b0">1</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:12px;border-top:1px solid #333;padding-top:4px;margin-top:4px">
+            <span style="color:#888">Total</span><span style="color:#4ec9b0;font-weight:bold">3</span>
+          </div>
+
+          <div style="color:#888;font-size:10px;letter-spacing:1px;margin-bottom:4px">BACKENDS</div>
+          <div style="margin-bottom:3px"><span style="color:#4ec9b0">●</span> <span style="color:#d4d4d4">HDHR</span> <span style="color:#888;font-size:11px">192.168.1.50</span></div>
+          <div style="margin-bottom:12px"><span style="color:#4ec9b0">●</span> <span style="color:#d4d4d4">Tunarr</span> <span style="color:#888;font-size:11px">:8000</span></div>
+
+          <div style="border-top:1px solid #333;padding-top:8px;color:#555;font-size:11px">
+            <div>[q] quit</div>
+            <div>[d] toggle debug</div>
+          </div>
+        </div>
+
+        <!-- Log pane -->
+        <div style="flex:1;border:1px solid #444;border-radius:4px;padding:10px;min-height:220px">
+          <div style="color:#888;font-size:10px;letter-spacing:1px;border-bottom:1px solid #333;padding-bottom:4px;margin-bottom:8px">LOG</div>
+          <div><span style="color:#555">12:34:01</span> <span style="color:#6a9955">INFO </span> Tunarr backend available <span style="color:#888">host=tunarr port=8000</span></div>
+          <div><span style="color:#555">12:34:02</span> <span style="color:#6a9955">INFO </span> App proxy listening <span style="color:#888">addr=0.0.0.0:65001</span></div>
+          <div><span style="color:#555">12:34:10</span> <span style="color:#6a9955">INFO </span> Tuner proxy connected <span style="color:#888">addr=192.168.1.50:54312</span></div>
+          <div><span style="color:#555">12:34:11</span> <span style="color:#569cd6">DEBUG</span> Request received from app <span style="color:#888">bytes=20</span></div>
+          <div><span style="color:#555">12:34:11</span> <span style="color:#569cd6">DEBUG</span> Reply received from tuner <span style="color:#888">bytes=156</span></div>
+          <div><span style="color:#555">12:34:15</span> <span style="color:#569cd6">DEBUG</span> Request received from app <span style="color:#888">bytes=20</span></div>
+          <div><span style="color:#555">12:34:20</span> <span style="color:#d7ba7d">WARN </span> Tunarr backend not available</div>
+          <div><span style="color:#555">12:34:25</span> <span style="color:#f44747">ERROR</span> Error sending reply <span style="color:#888">err=broken pipe</span></div>
+          <div style="color:#555;margin-top:8px;font-size:11px;font-style:italic">── debug visible ──</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Proposed layout</h3>
+      <p>Sidebar: mode, port, connections, backend status. Log: timestamp + level + message + key=value attrs. <kbd>d</kbd> toggles debug visibility.</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top:20px" class="section">
+  <p class="subtitle">One question: when a backend is <em>not configured</em> (e.g., no Tunarr), should it be hidden from the sidebar, or shown as <span style="font-family:monospace;color:#888">○ Tunarr  (not configured)</span>?</p>
+  <div class="options" style="max-width:500px">
+    <div class="option" data-choice="hide" onclick="toggleSelect(this)">
+      <div class="letter">H</div>
+      <div class="content"><h3>Hide it</h3><p>Only show backends that are actually configured</p></div>
+    </div>
+    <div class="option" data-choice="show-gray" onclick="toggleSelect(this)">
+      <div class="letter">S</div>
+      <div class="content"><h3>Show grayed out</h3><p>Always show both, dim if not configured</p></div>
+    </div>
+  </div>
+</div>
