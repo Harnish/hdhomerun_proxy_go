@@ -21,6 +21,20 @@ type Config struct {
 	Debug                        bool `json:"debug"`
 	LogActiveConnectionsInterval int  `json:"log_active_connections_interval_seconds"` // Log active connections at this interval (0 to disable)
 
+	// Device emulation settings
+	Device struct {
+		// Model type (e.g., "HDFX-4K", "HDHR3-US")
+		ModelType string `json:"model_type"`
+		// Device ID (8-hex string, e.g., "1072ABCD"). Auto-generated if empty.
+		DeviceID string `json:"device_id"`
+		// Friendly name (e.g., "HDHomeRun FLEX 4K"). Uses default if empty.
+		FriendlyName string `json:"friendly_name"`
+		// Firmware version (e.g., "20250825"). Uses realistic default if empty.
+		FirmwareVersion string `json:"firmware_version"`
+		// Device auth token (usually a hex string, can be empty for unauth)
+		DeviceAuth string `json:"device_auth"`
+	} `json:"device"`
+
 	// App proxy settings
 	App struct {
 		BindAddress  string `json:"bind_address"`
@@ -102,6 +116,12 @@ func SaveConfigTemplate(filepath string) error {
 		Debug:                        false,
 		LogActiveConnectionsInterval: 60, // Log every 60 seconds
 	}
+
+	template.Device.ModelType = "HDFX-4K"
+	template.Device.DeviceID = "" // Will auto-generate if empty
+	template.Device.FriendlyName = "HDHomeRun FLEX 4K"
+	template.Device.FirmwareVersion = "20250825"
+	template.Device.DeviceAuth = ""
 
 	template.App.BindAddress = "0.0.0.0"
 	template.App.DirectHDHRIP = "192.168.1.50"

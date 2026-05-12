@@ -1,0 +1,431 @@
+Your proxy needs to emulate **far more than just “an M3U tuner”**. The HDHomeRun apps expect a combination of:
+
+1. UDP discovery behavior
+2. Specific HTTP endpoints
+3. HDHomeRun-style tuner semantics
+4. Stream behavior that looks like a real tuner
+5. Metadata fields that match what the official apps expect
+
+Right now, your proxy is probably close enough for Plex/Jellyfin-style “HDHR-compatible” support, but the official HDHomeRun apps are much stricter.
+
+Project references:
+
+* [hdhomerun_proxy_go](https://github.com/Harnish/hdhomerun_proxy_go?utm_source=chatgpt.com)
+* [Tunarr](https://github.com/chrisbenincasa/tunarr?utm_source=chatgpt.com)
+* [HDHomeRun Discover API docs](https://info.hdhomerun.com/info/discovery_api?utm_source=chatgpt.com)
+* [HDHomeRun HTTP API docs](https://info.hdhomerun.com/info/http_api?utm_source=chatgpt.com)
+
+---
+
+# What the HDHomeRun app actually expects
+
+The official app does roughly this:
+
+```text
+UDP broadcast discovery
+    ↓
+GET /discover.json
+    ↓
+GET /lineup_status.json
+    ↓
+GET /lineup.json
+    ↓
+GET /device.xml
+    ↓
+Attempt stream playback from lineup URLs
+    ↓
+Validate tuner locking/streaming behavior
+```
+
+If ANY of those behave unexpectedly, the app often silently ignores the device.
+
+---
+
+# Critical things your proxy MUST implement
+
+## 1. Proper UDP discovery on port 65001
+
+This is the biggest missing piece in most emulators.
+
+The official HDHomeRun apps do NOT primarily discover via HTTP scanning.
+
+They send UDP discovery packets to:
+
+```text
+255.255.255.255:65001
+```
+
+Your app must:
+
+* listen on UDP 65001
+* parse HDHR discovery packets
+* reply with valid HDHR discovery responses
+* include:
+
+  * DeviceID
+  * BaseURL
+  * tuner count
+  * device type
+
+Without this, the official app often says:
+
+> No tuners found
+
+Docs: ([info.hdhomerun.com][1])
+
+---
+
+# 2. Device ID must be VALID
+
+This is extremely important.
+
+HDHomeRun Device IDs are not arbitrary.
+
+They use a checksum/validation algorithm.
+
+If you return:
+
+```json
+"DeviceID": "12345678"
+```
+
+the official app may reject it.
+
+The docs/community notes mention checksum validation. ([GitHub][2])
+
+You should:
+
+* generate a real-valid HDHR device ID
+* preferably emulate an existing model family
+
+Example valid-looking IDs:
+
+```text
+1043A1BC
+1072ABCD
+```
+
+You may want to port the validation algorithm from:
+
+* [libhdhomerun](https://github.com/Silicondust/libhdhomerun?utm_source=chatgpt.com)
+
+---
+
+# 3. `/discover.json` must look REAL
+
+The app is picky.
+
+You need something like:
+
+```json
+{
+  "FriendlyName": "HDHomeRun FLEX 4K",
+  "ModelNumber": "HDFX-4K",
+  "FirmwareName": "hdhomerun4_atsc",
+  "FirmwareVersion": "20250825",
+  "DeviceID": "1072ABCD",
+  "DeviceAuth": "test1234",
+  "BaseURL": "http://192.168.1.20",
+  "LineupURL": "http://192.168.1.20/lineup.json",
+  "TunerCount": 4
+}
+```
+
+Important:
+
+* use realistic firmware names
+* use realistic model numbers
+* don't invent weird values
+
+Docs: ([GitHub][2])
+
+---
+
+# 4. `/lineup_status.json`
+
+Many emulators forget this.
+
+Required by Plex and often queried by HDHR apps.
+
+Example:
+
+```json
+{
+  "ScanInProgress": 0,
+  "ScanPossible": 1,
+  "Source": "Cable",
+  "SourceList": ["Cable"],
+  "NumChannels": 120
+}
+```
+
+Tvheadend explicitly documents this as required for HDHR compatibility. ([docs.tvheadend.org][3])
+
+---
+
+# 5. `/lineup.json` formatting must be exact
+
+This is another common failure point.
+
+Fields must be strings where expected.
+
+Example:
+
+```json
+[
+  {
+    "GuideNumber": "2.1",
+    "GuideName": "CBS",
+    "URL": "http://192.168.1.20/auto/v2.1"
+  }
+]
+```
+
+NOT:
+
+```json
+"GuideNumber": 2.1
+```
+
+Plex crashes on numeric values in some cases. ([Reddit][4])
+
+---
+
+# 6. Stream URLs must behave like a tuner
+
+This is probably your current real problem.
+
+Tunarr likely outputs:
+
+* HLS playlists
+* transcoded streams
+* dynamic segment streams
+
+The HDHomeRun app expects something closer to:
+
+* MPEG-TS
+* continuous stream
+* immediate startup
+* no playlist negotiation weirdness
+* tuner-like behavior
+
+Many clients fail if they receive:
+
+* chunked HLS manifests
+* redirects
+* long startup delays
+* codec changes
+* unsupported codecs
+* discontinuities
+
+---
+
+# 7. You probably need MPEG-TS passthrough
+
+Ideal output:
+
+```text
+video/mp2t
+```
+
+Direct continuous MPEG transport stream.
+
+Example headers:
+
+```http
+Content-Type: video/mp2t
+Transfer-Encoding: chunked
+```
+
+The HDHomeRun app behaves much more reliably with raw TS.
+
+If Tunarr gives HLS:
+
+```text
+.m3u8
+```
+
+you may need ffmpeg remuxing:
+
+```bash
+ffmpeg -i stream.m3u8 -c copy -f mpegts pipe:1
+```
+
+---
+
+# 8. Tuner locking endpoints
+
+The real HDHR ecosystem uses tuner lock semantics.
+
+Examples:
+
+```text
+/tuner0/lockkey
+/tuner0/channel
+/tuner0/status
+```
+
+Some clients probe these.
+
+Even if the official app doesn't require all of them, missing endpoints can cause issues.
+
+You should emulate:
+
+```text
+GET /tuner0/status
+GET /tuner0/streaminfo
+POST /tuner0/channel
+POST /tuner0/lockkey
+```
+
+---
+
+# 9. XML endpoints still matter
+
+Some apps still probe:
+
+```text
+/device.xml
+/lineup.xml
+```
+
+Even if JSON works.
+
+Implement them.
+
+---
+
+# 10. mDNS/Bonjour helps
+
+Modern HDHomeRun devices also advertise via mDNS.
+
+Service types like:
+
+```text
+_hdhomerun._tcp
+```
+
+This improves detection on:
+
+* iOS
+* Apple TV
+* some Android environments
+
+Especially because mobile OSes restrict UDP broadcast now. ([Reddit][5])
+
+---
+
+# What I suspect is currently happening
+
+Most likely:
+
+## Discovery works partially
+
+OR:
+
+## discover.json works manually
+
+BUT:
+
+## The stream itself doesn't look like a tuner
+
+The HDHomeRun app is MUCH stricter than Plex.
+
+Plex accepts "HDHR-compatible-ish."
+
+The official app expects:
+
+* real tuner semantics
+* continuous MPEG-TS
+* fast startup
+* proper lock behavior
+* proper discovery
+
+---
+
+# What I would implement first
+
+Priority order:
+
+## MUST HAVE
+
+### Discovery
+
+* UDP 65001 responder
+* valid DeviceID
+* mDNS
+
+### Endpoints
+
+* `/discover.json`
+* `/lineup.json`
+* `/lineup_status.json`
+* `/device.xml`
+
+### Streaming
+
+* continuous MPEG-TS output
+* no redirects
+* no HLS exposed directly to client
+
+---
+
+# Architecture I would recommend
+
+```text
+HDHR App
+   ↓
+hdhomerun_proxy_go
+   ↓
+fake tuner endpoints
+   ↓
+Tunarr API / M3U
+   ↓
+ffmpeg remux layer
+   ↓
+continuous MPEG-TS
+```
+
+NOT:
+
+```text
+HDHR App → raw Tunarr HLS
+```
+
+---
+
+# Huge clue
+
+If VLC can open your proxy stream URL directly and instantly as:
+
+```text
+video/mp2t
+```
+
+and channel changing behaves like live TV, you're close.
+
+If VLC first downloads `.m3u8`, buffers segments, or takes several seconds to start, the HDHR app likely rejects it.
+
+---
+
+# Projects worth studying
+
+These implement more complete HDHR emulation:
+
+* [xTeVe](https://github.com/xteve-project/xTeVe?utm_source=chatgpt.com)
+* [Tablo2Plex](https://github.com/hearhellacopters/tablo2plex?utm_source=chatgpt.com)
+* [libhdhomerun](https://github.com/Silicondust/libhdhomerun?utm_source=chatgpt.com)
+
+Especially study:
+
+* UDP discovery packets
+* lineup formatting
+* TS remuxing
+* tuner state management
+
+[1]: https://info.hdhomerun.com/info/discovery_api?utm_source=chatgpt.com "discovery_api [Everything HDHomeRun]"
+[2]: https://github.com/waypar/hdhomerun-protocol-docs?utm_source=chatgpt.com "GitHub - waypar/hdhomerun-protocol-docs: Documentation of the HDHomerun protocol"
+[3]: https://docs.tvheadend.org/documentation/development/json-api/other-functions?utm_source=chatgpt.com "Other Functions | Tvheadend Docs"
+[4]: https://www.reddit.com/r/PleX/comments/1ftiwb5?utm_source=chatgpt.com "Live TV Tuner Crashes Plex Immediately, Please help"
+[5]: https://www.reddit.com/r/HDHR/comments/nezbfx?utm_source=chatgpt.com "PSA: iOS app not discovering devices"
+
