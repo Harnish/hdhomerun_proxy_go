@@ -91,7 +91,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install nfpm
-        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3
 
       - name: Build packages
         env:
