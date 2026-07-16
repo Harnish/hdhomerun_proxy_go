@@ -1,0 +1,22 @@
+name: hdhomerun-proxy
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+maintainer: Joseph Harnish <josephharnish@gmail.com>
+description: HDHomeRun discovery proxy that bridges device discovery across network VLANs.
+homepage: https://github.com/Harnish/hdhomerun_proxy_go
+license: MIT
+
+contents:
+  - src: ./hdhomerun_proxy
+    dst: /opt/hdhomerun-proxy/hdhomerun_proxy
+    file_info:
+      mode: 0755
+  - src: ./scripts/hdhomerun-proxy.service
+    dst: /lib/systemd/system/hdhomerun-proxy.service
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: ./scripts/postinstall.sh
+  preremove: ./scripts/preremove.sh

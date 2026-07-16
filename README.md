@@ -27,6 +27,18 @@ Pre-built binaries are attached to every [GitHub Release](../../releases):
 | `hdhomerun_proxy-linux-arm-v7` | Linux ARM 32-bit (Raspberry Pi 3/Zero 2 W) |
 | `hdhomerun_proxy-windows-amd64.exe` | Windows x86-64 |
 
+Linux users can instead grab a `.deb` or `.rpm` package from the same release. Installing it drops the binary at `/opt/hdhomerun-proxy/hdhomerun_proxy`, installs the systemd unit, and creates the `hdhomerun` user — see [Raspberry Pi Deployment](#raspberry-pi-deployment) below for the manual equivalent.
+
+```bash
+# Debian/Ubuntu
+sudo dpkg -i hdhomerun-proxy_<version>_amd64.deb
+
+# Fedora/RHEL
+sudo rpm -i hdhomerun-proxy_<version>_amd64.rpm
+```
+
+Package arch suffixes: `amd64`, `arm64`, `arm7` (Pi 3/Zero 2 W).
+
 ---
 
 ## Building from Source

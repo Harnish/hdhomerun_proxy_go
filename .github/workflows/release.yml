@@ -56,9 +56,64 @@ jobs:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}
 
+  package:
+    name: Build ${{ matrix.nfpm_arch }} deb/rpm
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            nfpm_arch: amd64
+          - goarch: arm64
+            nfpm_arch: arm64
+          - goarch: arm-v7
+            nfpm_arch: arm7
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download binary
+        uses: actions/download-artifact@v8
+        with:
+          name: hdhomerun_proxy-linux-${{ matrix.goarch }}
+          path: .
+
+      - name: Prepare binary
+        run: |
+          mv hdhomerun_proxy-linux-${{ matrix.goarch }} hdhomerun_proxy
+          chmod +x hdhomerun_proxy
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install nfpm
+        run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2
+
+      - name: Build packages
+        env:
+          ARCH: ${{ matrix.nfpm_arch }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          nfpm package --config nfpm.yaml --packager deb --target "hdhomerun-proxy_${VERSION}_${ARCH}.deb"
+          nfpm package --config nfpm.yaml --packager rpm --target "hdhomerun-proxy_${VERSION}_${ARCH}.rpm"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: hdhomerun-proxy-${{ matrix.nfpm_arch }}-packages
+          path: |
+            hdhomerun-proxy_${{ env.VERSION }}_${{ matrix.nfpm_arch }}.deb
+            hdhomerun-proxy_${{ env.VERSION }}_${{ matrix.nfpm_arch }}.rpm
+
   release:
     name: Create release
-    needs: build
+    needs: [build, package]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
