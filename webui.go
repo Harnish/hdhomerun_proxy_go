@@ -117,7 +117,10 @@ func (ws *webServer) handleConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch r.Method {
 	case http.MethodPost:
-		var newCfg Config
+		// Decode over a copy of the current config so fields the client didn't
+		// send (e.g. the device section, which the form doesn't edit) are kept.
+		// Wiping device.device_id would change the tuner identity apps see.
+		newCfg := *ws.store.Get()
 		if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}) //nolint:errcheck

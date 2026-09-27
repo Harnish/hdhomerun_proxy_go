@@ -52,3 +52,29 @@ func TestBackendRouterStatsConnectionCounts(t *testing.T) {
 		t.Errorf("expected ActiveDial=1, got %d", s.ActiveDial)
 	}
 }
+
+func TestBackendRouterStatsHealth(t *testing.T) {
+	br := backendRouter{name: "AppProxy"}
+	s := br.Stats()
+	if s.HDHR.State != "unknown" || s.HDHRTarget != "" || s.LinkExpected {
+		t.Fatalf("fresh router: got HDHR=%q target=%q linkExpected=%v", s.HDHR.State, s.HDHRTarget, s.LinkExpected)
+	}
+
+	br.setLink(false, "")
+	if s = br.Stats(); s.HDHRTarget != "broadcast" || s.LinkUp {
+		t.Errorf("AppProxy awaiting peer: target=%q linkUp=%v", s.HDHRTarget, s.LinkUp)
+	}
+	br.setLink(true, "10.0.0.2:5555")
+	if s = br.Stats(); !s.LinkUp || s.LinkPeer != "10.0.0.2:5555" {
+		t.Errorf("link up: got up=%v peer=%q", s.LinkUp, s.LinkPeer)
+	}
+
+	br.recordHDHR("no reply")
+	if s = br.Stats(); s.HDHR.State != "fail" || s.HDHR.Err != "no reply" {
+		t.Errorf("after failure: %+v", s.HDHR)
+	}
+	br.recordHDHR("")
+	if s = br.Stats(); s.HDHR.State != "ok" || s.HDHR.Err != "" {
+		t.Errorf("after success: %+v", s.HDHR)
+	}
+}

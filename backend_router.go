@@ -19,32 +19,140 @@ type backendRouter struct {
 	activeDialConnections  int
 	name                   string
 	resolveLocalIP         func(*net.UDPAddr) string
+
+	// Health, guarded by healthMu. Recorded from real traffic so the UIs
+	// never show a backend as healthy without evidence.
+	healthMu     sync.Mutex
+	hdhrHealth   BackendHealth
+	tunarrHealth BackendHealth
+	linkExpected bool // true when this instance talks to a peer proxy over TCP
+	linkUp       bool
+	linkPeer     string
+	linkSince    time.Time
+}
+
+// BackendHealth is the last observed outcome of talking to a backend.
+// State is "unknown" (never contacted), "ok", or "fail".
+type BackendHealth struct {
+	State string
+	At    time.Time `json:",omitempty"`
+	Err   string    `json:",omitempty"`
 }
 
 // ProxyStats is a point-in-time snapshot of backendRouter state for display.
 type ProxyStats struct {
 	Name             string
 	DirectHDHRIP     string
+	HDHRTarget       string // DirectHDHRIP, "broadcast" (AppProxy relaying for a TunerProxy), or ""
+	TunarrHost       string
 	TunarrPort       int
 	TunarrConfigured bool // true if tunarr != nil (configured at startup)
 	ActiveUDP        int
 	ActiveDial       int
+	HDHR             BackendHealth
+	Tunarr           BackendHealth
+	LinkExpected     bool
+	LinkUp           bool
+	LinkPeer         string
+	LinkSince        time.Time `json:",omitempty"`
 }
 
 func (br *backendRouter) Stats() ProxyStats {
 	br.activeConnectionsMutex.Lock()
-	defer br.activeConnectionsMutex.Unlock()
 	s := ProxyStats{
 		Name:         br.name,
 		DirectHDHRIP: br.directHDHRIP,
 		ActiveUDP:    br.activeUDPConnections,
 		ActiveDial:   br.activeDialConnections,
 	}
+	br.activeConnectionsMutex.Unlock()
 	if br.tunarr != nil {
+		s.TunarrHost = br.tunarr.host
 		s.TunarrPort = br.tunarr.port
 		s.TunarrConfigured = true
 	}
+	br.healthMu.Lock()
+	s.HDHR = withUnknown(br.hdhrHealth)
+	s.Tunarr = withUnknown(br.tunarrHealth)
+	s.LinkExpected = br.linkExpected
+	s.LinkUp = br.linkUp
+	s.LinkPeer = br.linkPeer
+	s.LinkSince = br.linkSince
+	br.healthMu.Unlock()
+	switch {
+	case br.directHDHRIP != "":
+		s.HDHRTarget = br.directHDHRIP
+	case br.name == "AppProxy" && s.LinkExpected:
+		s.HDHRTarget = "broadcast"
+	}
 	return s
+}
+
+func withUnknown(h BackendHealth) BackendHealth {
+	if h.State == "" {
+		h.State = "unknown"
+	}
+	return h
+}
+
+func (br *backendRouter) recordHDHR(err string) {
+	br.healthMu.Lock()
+	defer br.healthMu.Unlock()
+	br.hdhrHealth = healthFrom(err)
+}
+
+func (br *backendRouter) recordTunarr(err string) {
+	br.healthMu.Lock()
+	defer br.healthMu.Unlock()
+	br.tunarrHealth = healthFrom(err)
+}
+
+func healthFrom(err string) BackendHealth {
+	if err == "" {
+		return BackendHealth{State: "ok", At: time.Now()}
+	}
+	return BackendHealth{State: "fail", At: time.Now(), Err: err}
+}
+
+// setLink records the state of the TCP link to the peer proxy.
+func (br *backendRouter) setLink(up bool, peer string) {
+	br.healthMu.Lock()
+	defer br.healthMu.Unlock()
+	br.linkExpected = true
+	if up != br.linkUp || br.linkSince.IsZero() {
+		br.linkSince = time.Now()
+	}
+	br.linkUp = up
+	if peer != "" {
+		br.linkPeer = peer
+	}
+}
+
+// checkTunarr probes Tunarr once and records the result.
+func (br *backendRouter) checkTunarr(ctx context.Context) bool {
+	if br.tunarr.IsAvailable(ctx) {
+		br.recordTunarr("")
+		return true
+	}
+	br.recordTunarr("discover.json not reachable")
+	return false
+}
+
+// watchTunarr re-probes Tunarr periodically so its health reflects the
+// present, not just startup. Discovery replies are built locally, so there
+// is no per-request traffic to Tunarr to observe instead.
+// ponytail: fixed 30s interval; make configurable if anyone needs it.
+func (br *backendRouter) watchTunarr(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			br.checkTunarr(ctx)
+		}
+	}
 }
 
 func (br *backendRouter) buildDiscoveryPacket(srcIP string) []byte {
@@ -154,12 +262,14 @@ func (br *backendRouter) forwardToDirectHDHR(queryData []byte, appAddr *net.UDPA
 	hdhrUDPAddr, err := net.ResolveUDPAddr("udp", hdhrAddr)
 	if err != nil {
 		slog.Error("Error resolving HDHomeRun address", "addr", hdhrAddr, "err", err)
+		br.recordHDHR("cannot resolve " + hdhrAddr)
 		return
 	}
 
 	conn, err := net.DialUDP("udp", nil, hdhrUDPAddr)
 	if err != nil {
 		slog.Error("Error connecting to HDHomeRun", "addr", hdhrAddr, "err", err)
+		br.recordHDHR(err.Error())
 		return
 	}
 	defer conn.Close()
@@ -167,6 +277,7 @@ func (br *backendRouter) forwardToDirectHDHR(queryData []byte, appAddr *net.UDPA
 	_, err = conn.Write(queryData)
 	if err != nil {
 		slog.Error("Error sending query to HDHomeRun", "err", err)
+		br.recordHDHR(err.Error())
 		return
 	}
 
@@ -176,11 +287,15 @@ func (br *backendRouter) forwardToDirectHDHR(queryData []byte, appAddr *net.UDPA
 	if err != nil {
 		if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
 			slog.Error("Error reading response from HDHomeRun", "err", err)
+			br.recordHDHR(err.Error())
+		} else {
+			br.recordHDHR(fmt.Sprintf("no reply within %dms", UDPReadTimeout))
 		}
 		return
 	}
 
 	if n > 0 {
+		br.recordHDHR("")
 		slog.Debug("Response received from HDHomeRun", "bytes", n)
 		_, err := replyConn.WriteToUDP(respBuf[:n], appAddr)
 		if err != nil {

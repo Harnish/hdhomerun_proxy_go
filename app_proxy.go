@@ -51,7 +51,7 @@ func (ap *AppProxy) Run(ctx context.Context, bindAddr, directIP string, store *c
 	// Initialize Tunarr backend if enabled
 	if cfg.Tunarr.Enabled {
 		ap.tunarr = NewTunarrBackend(cfg.Tunarr.Host, cfg.Tunarr.Port, cfg.Tunarr.HttpTimeout)
-		if ap.tunarr.IsAvailable(ctx) {
+		if ap.checkTunarr(ctx) {
 			slog.Info("Tunarr backend available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
 		} else {
 			slog.Warn("Tunarr backend not available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
@@ -59,6 +59,10 @@ func (ap *AppProxy) Run(ctx context.Context, bindAddr, directIP string, store *c
 				return fmt.Errorf("tunarr backend required but not available")
 			}
 		}
+	}
+
+	if ap.tunarr != nil {
+		go ap.watchTunarr(ctx)
 	}
 
 	// Initialize HDHR endpoint server for discovery endpoints
@@ -147,6 +151,7 @@ func (ap *AppProxy) runTunerProxyMode(ctx context.Context, bindAddr string, cfg 
 	defer listener.Close()
 
 	slog.Info("App proxy listening for tuner proxy", "addr", addr)
+	ap.setLink(false, "")
 
 	// Accept connections in a goroutine
 	go func() {
@@ -183,6 +188,7 @@ func (ap *AppProxy) handleTunerProxyConnection(ctx context.Context, conn net.Con
 
 	peername := conn.RemoteAddr()
 	slog.Info("Tuner proxy connected", "addr", peername)
+	ap.setLink(true, peername.String())
 
 	ap.tcpMutex.Lock()
 	ap.tcpTransport = conn
@@ -201,6 +207,7 @@ func (ap *AppProxy) handleTunerProxyConnection(ctx context.Context, conn net.Con
 		n, err := conn.Read(buf)
 		if err != nil {
 			slog.Info("Tuner proxy disconnected", "addr", peername)
+			ap.setLink(false, "")
 			ap.tcpMutex.Lock()
 			ap.tcpTransport = nil
 			ap.tcpMutex.Unlock()
@@ -262,15 +269,21 @@ func (ap *AppProxy) queryTuner(queryData []byte, callback func([]byte)) {
 
 		conn.SetReadDeadline(time.Now().Add(time.Duration(UDPReadTimeout) * time.Millisecond))
 		buf := make([]byte, UDPReadBufferSize)
+		replied := false
 		for {
 			n, _, err := conn.ReadFromUDP(buf)
 			if err != nil {
 				if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
 					slog.Error("Error reading UDP response", "err", err)
+					ap.recordHDHR(err.Error())
+				} else if !replied {
+					ap.recordHDHR(fmt.Sprintf("no HDHomeRun answered the broadcast within %dms", UDPReadTimeout))
 				}
 				return
 			}
 			if n > 0 {
+				replied = true
+				ap.recordHDHR("")
 				slog.Debug("Reply received from tuner", "bytes", n)
 				callback(buf[:n])
 			}

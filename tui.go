@@ -38,7 +38,11 @@ var (
 	dimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240"))
 
-	greenDot = lipgloss.NewStyle().Foreground(lipgloss.Color("76")).Render("●")
+	healthDots = map[string]string{
+		"ok":      lipgloss.NewStyle().Foreground(lipgloss.Color("76")).Render("●"),
+		"fail":    lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("●"),
+		"unknown": lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("○"),
+	}
 
 	sidebarStyle = lipgloss.NewStyle().
 			Width(sidebarInnerWidth).
@@ -144,21 +148,38 @@ func (m tuiModel) renderSidebar() string {
 	b.WriteString(headerStyle.Render("HDHomeRun Proxy") + "\n\n")
 
 	b.WriteString(labelStyle.Render("MODE") + "\n")
-	b.WriteString(valueStyle.Render(m.stats.Name) + "\n\n")
+	b.WriteString(valueStyle.Render(m.stats.Name) + "\n")
+	if m.stats.LinkExpected {
+		if m.stats.LinkUp {
+			b.WriteString(healthDots["ok"] + " link up " + dimStyle.Render(m.stats.LinkPeer) + "\n")
+		} else {
+			b.WriteString(healthDots["fail"] + " link down " + dimStyle.Render(m.stats.LinkPeer) + "\n")
+		}
+	} else {
+		b.WriteString(dimStyle.Render("direct mode") + "\n")
+	}
+	b.WriteString("\n")
 
 	b.WriteString(labelStyle.Render("CONNECTIONS") + "\n")
 	b.WriteString(fmt.Sprintf("UDP   %s\n", valueStyle.Render(fmt.Sprintf("%d", m.stats.ActiveUDP))))
 	b.WriteString(fmt.Sprintf("Dial  %s\n", valueStyle.Render(fmt.Sprintf("%d", m.stats.ActiveDial))))
 	b.WriteString(fmt.Sprintf("Total %s\n", valueStyle.Render(fmt.Sprintf("%d", m.stats.ActiveUDP+m.stats.ActiveDial))))
 
-	if m.stats.DirectHDHRIP != "" || m.stats.TunarrConfigured {
-		b.WriteString("\n" + labelStyle.Render("BACKENDS") + "\n")
-		if m.stats.DirectHDHRIP != "" {
-			b.WriteString(greenDot + " HDHR " + dimStyle.Render(m.stats.DirectHDHRIP) + "\n")
+	b.WriteString("\n" + labelStyle.Render("BACKENDS") + "\n")
+	switch {
+	case m.stats.HDHRTarget != "" || m.stats.TunarrConfigured:
+		if m.stats.HDHRTarget != "" {
+			b.WriteString(healthDots[m.stats.HDHR.State] + " HDHR " + dimStyle.Render(m.stats.HDHRTarget) + "\n")
+			b.WriteString("  " + dimStyle.Render(healthText(m.stats.HDHR)) + "\n")
 		}
 		if m.stats.TunarrConfigured {
-			b.WriteString(greenDot + " Tunarr " + dimStyle.Render(fmt.Sprintf(":%d", m.stats.TunarrPort)) + "\n")
+			b.WriteString(healthDots[m.stats.Tunarr.State] + " Tunarr " + dimStyle.Render(fmt.Sprintf("%s:%d", m.stats.TunarrHost, m.stats.TunarrPort)) + "\n")
+			b.WriteString("  " + dimStyle.Render(healthText(m.stats.Tunarr)) + "\n")
 		}
+	case m.stats.LinkExpected:
+		b.WriteString(dimStyle.Render("handled by App Proxy") + "\n")
+	default:
+		b.WriteString(dimStyle.Render("none configured") + "\n")
 	}
 
 	debugLabel := "off"
@@ -168,6 +189,17 @@ func (m tuiModel) renderSidebar() string {
 	b.WriteString("\n" + dimStyle.Render(fmt.Sprintf("[q]quit [d]debug(%s)", debugLabel)))
 
 	return sidebarStyle.Render(b.String())
+}
+
+// healthText is the one-line explanation under a backend; web UI mirrors it.
+func healthText(h BackendHealth) string {
+	switch h.State {
+	case "ok":
+		return "replied " + h.At.Format("15:04:05")
+	case "fail":
+		return h.Err
+	}
+	return "not contacted yet"
 }
 
 func (m tuiModel) renderLogContent() string {

@@ -47,7 +47,7 @@ func (tp *TunerProxy) Run(ctx context.Context, appProxyHostOrIP string, isDirect
 	// Initialize Tunarr backend if enabled
 	if cfg.Tunarr.Enabled {
 		tp.tunarr = NewTunarrBackend(cfg.Tunarr.Host, cfg.Tunarr.Port, cfg.Tunarr.HttpTimeout)
-		if tp.tunarr.IsAvailable(ctx) {
+		if tp.checkTunarr(ctx) {
 			slog.Info("Tunarr backend available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
 		} else {
 			slog.Warn("Tunarr backend not available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
@@ -55,6 +55,10 @@ func (tp *TunerProxy) Run(ctx context.Context, appProxyHostOrIP string, isDirect
 				return fmt.Errorf("tunarr backend required but not available")
 			}
 		}
+	}
+
+	if tp.tunarr != nil {
+		go tp.watchTunarr(ctx)
 	}
 
 	if store.Get().LogActiveConnectionsInterval > 0 {
@@ -161,6 +165,8 @@ func (tp *TunerProxy) runTunerProxyMode(ctx context.Context, appProxyHost string
 	// Start UDP listener goroutine
 	go tp.handleUDPBroadcasts(ctx)
 
+	tp.setLink(false, net.JoinHostPort(appProxyHost, fmt.Sprintf("%d", TCPPort)))
+
 	// Keep trying to connect to app proxy
 	ticker := time.NewTicker(time.Duration(cfg.GetReconnectInterval()) * time.Second)
 	defer ticker.Stop()
@@ -200,6 +206,7 @@ func (tp *TunerProxy) setTCPTransport(conn net.Conn) {
 	tp.tcpMutex.Lock()
 	defer tp.tcpMutex.Unlock()
 	tp.tcpTransport = conn
+	tp.setLink(conn != nil, "")
 }
 
 // closeTCP safely closes the TCP transport
@@ -209,6 +216,7 @@ func (tp *TunerProxy) closeTCP() {
 	if tp.tcpTransport != nil {
 		tp.tcpTransport.Close()
 		tp.tcpTransport = nil
+		tp.setLink(false, "")
 	}
 }
 

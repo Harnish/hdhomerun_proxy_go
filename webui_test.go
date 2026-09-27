@@ -155,6 +155,35 @@ func TestWebServerPostConfig(t *testing.T) {
 	}
 }
 
+// The web form never sends the device section; saving must not wipe it,
+// or the tuner's DeviceID changes after restart.
+func TestWebServerPostConfigPreservesUnsentFields(t *testing.T) {
+	ws, srv := makeTestServer(t)
+	cur := ws.store.Get()
+	cur.Device.DeviceID = "1072ABCD"
+	cur.Device.ModelType = "HDHR5-4K"
+	body := `{"hdhomerun_port":65001,"tcp_port":65001,"debug":true}`
+	req, _ := http.NewRequest("POST", srv.URL+"/api/config", strings.NewReader(body))
+	req.SetBasicAuth("testuser", "testpass")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	got := ws.store.Get()
+	if got.Device.DeviceID != "1072ABCD" || got.Device.ModelType != "HDHR5-4K" {
+		t.Errorf("device section not preserved: %+v", got.Device)
+	}
+	if !got.Debug {
+		t.Error("expected Debug=true after POST")
+	}
+	if got.WebUI.User != "testuser" {
+		t.Errorf("webui credentials not preserved, user=%q", got.WebUI.User)
+	}
+}
+
 func TestWebServerPostConfigInvalid(t *testing.T) {
 	_, srv := makeTestServer(t)
 	// Posting a config with zero ports should be rejected
