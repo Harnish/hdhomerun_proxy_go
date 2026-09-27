@@ -12,7 +12,7 @@ Three operating modes:
 | **Tuner Proxy** | Runs on the app's network (VLAN where Plex/Emby/Channels lives). Listens for UDP broadcasts from apps and relays them to the App Proxy over TCP. |
 | **Direct Mode** | Single machine with an IP route to the HDHomeRun — no App Proxy needed. |
 
-[Tunarr](https://github.com/chrisbenincasa/tunarr) is also supported as a backend alongside (or instead of) real HDHomeRun devices.
+[Tunarr](https://github.com/chrisbenincasa/tunarr) is also supported as a backend alongside (or instead of) real HDHomeRun devices. With Tunarr enabled, the proxy acts as an HDHomeRun tuner for Tunarr's channels: it answers discovery and serves the lineup, guide (`/epg.xml`) and MPEG-TS streams on port 5004. This absorbs the standalone tunarr-hdhr bridge. See [CONFIG.md](CONFIG.md#tunarr-settings).
 
 ---
 
@@ -295,7 +295,7 @@ services:
 - JSON config file support
 - Terminal UI (`-tui`)
 - Embedded web UI (`-webui`)
-- Tunarr backend support
+- Tunarr backend: emulated HDHomeRun tuner with lineup, guide and streams
 - Same UDP/TCP protocol and behavior
 
 ---

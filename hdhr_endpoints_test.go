@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -34,7 +33,7 @@ func TestDiscoverJSONEndpoint(t *testing.T) {
 		},
 	}
 
-	server := NewHDHREndpointServer(store, mockStats)
+	server := NewHDHREndpointServer(store, mockStats, nil)
 	handler := server.Handler()
 
 	req := httptest.NewRequest("GET", "/discover.json", nil)
@@ -75,7 +74,7 @@ func TestLineupStatusEndpoint(t *testing.T) {
 		},
 	}
 
-	server := NewHDHREndpointServer(store, mockStats)
+	server := NewHDHREndpointServer(store, mockStats, nil)
 	handler := server.Handler()
 
 	req := httptest.NewRequest("GET", "/lineup_status.json", nil)
@@ -113,7 +112,7 @@ func TestLineupJSONEndpoint(t *testing.T) {
 		},
 	}
 
-	server := NewHDHREndpointServer(store, mockStats)
+	server := NewHDHREndpointServer(store, mockStats, nil)
 	handler := server.Handler()
 
 	req := httptest.NewRequest("GET", "/lineup.json", nil)
@@ -146,7 +145,7 @@ func TestTunerStatusEndpoint(t *testing.T) {
 		},
 	}
 
-	server := NewHDHREndpointServer(store, mockStats)
+	server := NewHDHREndpointServer(store, mockStats, nil)
 	handler := server.Handler()
 
 	req := httptest.NewRequest("GET", "/tuner0/status", nil)
@@ -184,7 +183,7 @@ func TestDeviceXMLEndpoint(t *testing.T) {
 		},
 	}
 
-	server := NewHDHREndpointServer(store, mockStats)
+	server := NewHDHREndpointServer(store, mockStats, nil)
 	handler := server.Handler()
 
 	req := httptest.NewRequest("GET", "/device.xml", nil)
@@ -218,7 +217,7 @@ func TestMethodNotAllowedOnEndpoints(t *testing.T) {
 		},
 	}
 
-	server := NewHDHREndpointServer(store, mockStats)
+	server := NewHDHREndpointServer(store, mockStats, nil)
 	handler := server.Handler()
 
 	tests := []string{
@@ -255,8 +254,8 @@ func TestGetDeviceConfigAutoGeneration(t *testing.T) {
 		},
 	}
 
-	server := NewHDHREndpointServer(store, mockStats)
-	deviceCfg := server.getDeviceConfig(context.Background())
+	server := NewHDHREndpointServer(store, mockStats, nil)
+	deviceCfg := server.getDeviceConfig(httptest.NewRequest("GET", "/discover.json", nil))
 
 	if deviceCfg.DeviceID == "" {
 		t.Errorf("Expected auto-generated DeviceID, got empty string")

@@ -38,9 +38,13 @@ docker run -d --network host --name hdhomerun-proxy-app hdhomerun-proxy:latest a
 
 **`app_proxy.go` (AppProxy)** — runs on the tuner's network. Listens for TCP connections from TunerProxy (proxy mode) or UDP broadcasts (direct mode). Routes discovery requests to real HDHomeRun devices via UDP or Tunarr via HTTP. Can aggregate results from both sources.
 
-**`tuner_proxy.go` (TunerProxy)** — runs on the app's network. Listens for UDP broadcast packets from local apps on `0.0.0.0:65001`. Forwards to AppProxy over TCP (proxy mode) or directly to HDHR/Tunarr (direct mode). Translates Tunarr HTTP responses into pseudo-HDHR UDP packets.
+**`tuner_proxy.go` (TunerProxy)** — runs on the app's network. Listens for UDP broadcast packets from local apps on `0.0.0.0:65001`. Forwards to AppProxy over TCP (proxy mode) or directly to HDHR/Tunarr (direct mode); with Tunarr in direct mode it also serves the :5004 HDHR API.
 
-**`tunarr_backend.go` (TunarrBackend)** — HTTP client for Tunarr API (`/discover.json`, `/lineup.json`, `/tuner*/status.json`). Converts Tunarr device info into HDHR-compatible discovery packets. Supports exclusive mode (`use_tunarr_only`) or hybrid mode (Tunarr + HDHR, prefer Tunarr).
+**`tunarr_backend.go` / `tunarr_catalog.go` (TunarrBackend)** — Tunarr HTTP client. Refreshes a channel catalog from `/api/channels`, streams channels (pass-through of `/stream/channels/<id>.ts`, or ffmpeg `-c copy` remux with `stream_mode: "mpegts"`), and passes XMLTV through. Ported from the standalone tunarr-hdhr project.
+
+**`hdhr_discovery.go`** — binary HDHomeRun discovery protocol (TLV + CRC32). The reply encoder is pinned byte-for-byte to a capture from a real HDFX-4K (`hdhr_discovery_test.go`).
+
+**`hdhr_endpoints.go` (HDHREndpointServer)** — HDHR HTTP API on :5004 (`discover.json`, `lineup.json`/`.xml`, `epg.xml`, `/auto/v<ch>` with tuner locking). Lineup and streams come from Tunarr; identity comes from the `device` config section. Exclusive mode (`use_tunarr_only`) or hybrid mode (Tunarr tuner and real HDHR both answer discovery).
 
 **`message_codec.go` (MessageCodec)** — simple framing protocol: 2-byte big-endian length prefix + payload. Used for TCP communication between AppProxy and TunerProxy.
 
@@ -54,6 +58,7 @@ docker run -d --network host --name hdhomerun-proxy-app hdhomerun-proxy:latest a
 | TunerProxy ↔ AppProxy | TCP + MessageCodec | 65001 |
 | AppProxy ↔ HDHomeRun | UDP broadcast | 65001 |
 | AppProxy ↔ Tunarr | HTTP GET | configurable (default 8000) |
+| Apps ↔ Proxy (HDHR API, Tunarr lineup/streams) | HTTP | 5004 |
 
 ### Key Patterns
 
@@ -61,5 +66,5 @@ docker run -d --network host --name hdhomerun-proxy-app hdhomerun-proxy:latest a
 - TCP and UDP connections guarded by separate mutexes (`tcpMutex`, `udpMutex`)
 - UDP read deadline is 100ms; timeout errors are retried, not fatal
 - Linux binds broadcast to `255.255.255.255`; Windows uses `0.0.0.0` (see `tuner_proxy.go:62-65`)
-- `forwardToBackend()` prefers Tunarr if available; falls back to HDHR unless `use_tunarr_only` is set
+- `forwardToBackend()` sends the emulated Tunarr tuner's discovery reply, then also queries the real HDHR unless `use_tunarr_only` is set
 - Structured logging via `slog`; `-debug` flag enables `slog.LevelDebug`

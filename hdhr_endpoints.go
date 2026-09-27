@@ -5,15 +5,21 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"log/slog"
+	"net"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // HDHREndpointServer serves HDHR-compatible discovery endpoints
 // This is separate from the admin WebUI and doesn't require authentication
 type HDHREndpointServer struct {
-	store        *configStore
-	router       statsProvider
-	tunerStates  *TunerStateManager
+	store       *configStore
+	router      statsProvider
+	tunerStates *TunerStateManager
+	tunarr      *TunarrBackend // nil unless Tunarr is enabled; supplies the lineup and streams
 }
 
 // DiscoverJSONResponse matches HDHomeRun discover.json format
@@ -29,11 +35,14 @@ type DiscoverJSONResponse struct {
 	TunerCount      int    `json:"TunerCount"`
 }
 
-// LineupItemJSON is a single channel in the lineup
+// LineupItemJSON is a single channel in the lineup (also the <Program>
+// element of lineup.xml). Field order matches a real HDHomeRun.
 type LineupItemJSON struct {
-	GuideNumber string `json:"GuideNumber"`
-	GuideName   string `json:"GuideName"`
-	URL         string `json:"URL"`
+	XMLName     xml.Name `json:"-" xml:"Program"`
+	GuideNumber string   `json:"GuideNumber"`
+	GuideName   string   `json:"GuideName"`
+	HD          int      `json:"HD,omitempty" xml:"HD,omitempty"`
+	URL         string   `json:"URL"`
 }
 
 // LineupStatusJSON is the lineup status response
@@ -88,19 +97,13 @@ type TunerStatusJSON struct {
 }
 
 // NewHDHREndpointServer creates a new HDHR endpoint server
-func NewHDHREndpointServer(store *configStore, router statsProvider) *HDHREndpointServer {
-	// Initialize tuner state manager with tuner count from config
-	cfg := store.Get()
-	modelType := cfg.Device.ModelType
-	if modelType == "" {
-		modelType = "HDFX-4K"
-	}
-	modelInfo, _ := GetModelInfo(modelType)
-
+func NewHDHREndpointServer(store *configStore, router statsProvider, tunarr *TunarrBackend) *HDHREndpointServer {
+	modelInfo, _, _ := deviceIdentity(store.Get())
 	return &HDHREndpointServer{
 		store:       store,
 		router:      router,
 		tunerStates: NewTunerStateManager(modelInfo.TunerCount),
+		tunarr:      tunarr,
 	}
 }
 
@@ -110,6 +113,10 @@ func (he *HDHREndpointServer) Handler() http.Handler {
 	mux.HandleFunc("/discover.json", he.handleDiscover)
 	mux.HandleFunc("/lineup.json", he.handleLineup)
 	mux.HandleFunc("/lineup_status.json", he.handleLineupStatus)
+	mux.HandleFunc("/lineup.xml", he.handleLineupXML)
+	mux.HandleFunc("/epg.xml", he.handleEPG)
+	mux.HandleFunc("/auto/", he.handleStream)
+	mux.HandleFunc("/healthz", he.handleHealth)
 	mux.HandleFunc("/device.xml", he.handleDeviceXML)
 	mux.HandleFunc("/tuner", he.handleTunerList)
 	// Tuner status endpoints - pattern matching for /tuner{N}/status
@@ -126,47 +133,15 @@ func (he *HDHREndpointServer) Handler() http.Handler {
 }
 
 // getDeviceConfig gets the current device configuration, auto-generating DeviceID if needed
-func (he *HDHREndpointServer) getDeviceConfig(ctx context.Context) *DiscoverJSONResponse {
+func (he *HDHREndpointServer) getDeviceConfig(r *http.Request) *DiscoverJSONResponse {
 	cfg := he.store.Get()
-	model := cfg.Device.ModelType
-	if model == "" {
-		model = "HDFX-4K"
-	}
-
-	modelInfo, err := GetModelInfo(model)
-	if err != nil {
-		modelInfo, _ = GetModelInfo("HDFX-4K")
-	}
-
-	deviceID := cfg.Device.DeviceID
-	if deviceID == "" {
-		// Auto-generate a realistic Device ID
-		deviceID = GenerateRealisticDeviceID(model)
-		// Update config with generated ID (in-memory only for now)
-		cfg.Device.DeviceID = deviceID
-	}
-
-	baseURL := he.getBaseURL()
-	friendlyName := cfg.Device.FriendlyName
-	if friendlyName == "" {
-		friendlyName = modelInfo.FriendlyName
-	}
-
-	firmwareVersion := cfg.Device.FirmwareVersion
-	if firmwareVersion == "" {
-		firmwareVersion = "20250825"
-	}
-
-	deviceAuth := cfg.Device.DeviceAuth
-	if deviceAuth == "" {
-		deviceAuth = "00000000"
-	}
-
+	modelInfo, deviceID, deviceAuth := deviceIdentity(cfg)
+	baseURL := he.baseURL(r)
 	return &DiscoverJSONResponse{
-		FriendlyName:    friendlyName,
+		FriendlyName:    orDefault(cfg.Device.FriendlyName, modelInfo.FriendlyName),
 		ModelNumber:     modelInfo.ModelNumber,
 		FirmwareName:    modelInfo.FirmwareName,
-		FirmwareVersion: firmwareVersion,
+		FirmwareVersion: orDefault(cfg.Device.FirmwareVersion, "20250825"),
 		DeviceID:        deviceID,
 		DeviceAuth:      deviceAuth,
 		BaseURL:         baseURL,
@@ -175,12 +150,36 @@ func (he *HDHREndpointServer) getDeviceConfig(ctx context.Context) *DiscoverJSON
 	}
 }
 
-// getBaseURL constructs the base URL for the device
-func (he *HDHREndpointServer) getBaseURL() string {
-	// This would be called in a real server context where we know the address
-	// For now, return a placeholder that would be set by the calling server
-	// In practice, this should use the request's Host header
-	return "http://192.168.1.100:5004"
+// baseURL is the URL clients use to reach this server: the configured
+// tunarr.base_url, else the scheme and Host of the request itself.
+func (he *HDHREndpointServer) baseURL(r *http.Request) string {
+	if u := he.store.Get().Tunarr.BaseURL; u != "" {
+		return strings.TrimRight(u, "/")
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+// lineup returns the channels to advertise. Only Tunarr supplies channels;
+// real HDHomeRun devices serve their own lineup.
+func (he *HDHREndpointServer) lineup(r *http.Request) []LineupItemJSON {
+	items := []LineupItemJSON{}
+	if he.tunarr == nil {
+		return items
+	}
+	base := he.baseURL(r)
+	for _, e := range he.tunarr.catalog.Entries() {
+		items = append(items, LineupItemJSON{
+			GuideNumber: e.GuideNumber,
+			GuideName:   e.GuideName,
+			HD:          1,
+			URL:         base + "/auto/v" + e.GuideNumber,
+		})
+	}
+	return items
 }
 
 // handleDiscover handles /discover.json
@@ -189,11 +188,9 @@ func (he *HDHREndpointServer) handleDiscover(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	discover := he.getDeviceConfig(r.Context())
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
-	json.NewEncoder(w).Encode(discover) //nolint:errcheck
+	json.NewEncoder(w).Encode(he.getDeviceConfig(r)) //nolint:errcheck
 }
 
 // handleLineup handles /lineup.json
@@ -202,34 +199,96 @@ func (he *HDHREndpointServer) handleLineup(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	var lineup []LineupItemJSON
-
-	// If Tunarr is available, get lineup from it
-	baseURL := he.getBaseURL()
-	if stats := he.router.Stats(); stats.TunarrConfigured {
-		// This would normally fetch from Tunarr backend
-		// For now, return a sample lineup
-		lineup = []LineupItemJSON{
-			{
-				GuideNumber: "1.1",
-				GuideName:   "NBC",
-				URL:         baseURL + "/auto/v1.1",
-			},
-			{
-				GuideNumber: "2.1",
-				GuideName:   "CBS",
-				URL:         baseURL + "/auto/v2.1",
-			},
-		}
-	} else {
-		// Empty lineup for direct HDHR mode
-		lineup = []LineupItemJSON{}
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
-	json.NewEncoder(w).Encode(lineup) //nolint:errcheck
+	json.NewEncoder(w).Encode(he.lineup(r)) //nolint:errcheck
+}
+
+// handleLineupXML handles /lineup.xml in the shape a real HDHomeRun serves:
+// <Lineup><Program>...</Program></Lineup>.
+func (he *HDHREndpointServer) handleLineupXML(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	doc := struct {
+		XMLName  xml.Name `xml:"Lineup"`
+		Programs []LineupItemJSON
+	}{Programs: he.lineup(r)}
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write([]byte(xml.Header))   //nolint:errcheck
+	xml.NewEncoder(w).Encode(doc) //nolint:errcheck
+}
+
+// handleEPG passes Tunarr's XMLTV guide through at /epg.xml.
+func (he *HDHREndpointServer) handleEPG(w http.ResponseWriter, r *http.Request) {
+	if he.tunarr == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := he.tunarr.proxyXMLTV(r.Context(), w, he.store.Get().TunarrXMLTVEndpoint()); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+	}
+}
+
+// handleStream serves /auto/v<GuideNumber>: it claims a free tuner (503 when
+// all are busy, like a real device) and streams the channel from Tunarr.
+func (he *HDHREndpointServer) handleStream(w http.ResponseWriter, r *http.Request) {
+	if he.tunarr == nil {
+		http.NotFound(w, r)
+		return
+	}
+	number := strings.TrimPrefix(r.URL.Path, "/auto/v")
+	ch, ok := he.tunarr.catalog.Get(number)
+	if !ok {
+		http.Error(w, "Unknown channel", http.StatusNotFound)
+		return
+	}
+
+	tuner := he.acquireTuner(r)
+	if tuner < 0 {
+		http.Error(w, "All tuners in use", http.StatusServiceUnavailable)
+		return
+	}
+	defer he.tunerStates.ReleaseTuner(tuner)      //nolint:errcheck
+	he.tunerStates.SetTunerChannel(tuner, number) //nolint:errcheck
+
+	cfg := he.store.Get()
+	src := he.tunarr.streamURL(ch, cfg.Tunarr.StreamMode)
+	slog.Info("Stream started", "channel", number, "name", ch.GuideName, "tuner", tuner, "client", r.RemoteAddr)
+
+	var err error
+	if cfg.Tunarr.StreamMode == "mpegts" {
+		err = remuxToMPEGTS(r.Context(), w, cfg.TunarrFFmpegPath(), src)
+	} else {
+		err = proxyStream(r.Context(), w, src)
+	}
+	if err != nil && r.Context().Err() == nil {
+		slog.Warn("Stream failed", "channel", number, "source", src, "err", err)
+		// Effective only if nothing was written yet; otherwise the client just sees EOF.
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	slog.Info("Stream ended", "channel", number, "tuner", tuner)
+}
+
+// acquireTuner locks the first idle tuner for this request, or returns -1.
+func (he *HDHREndpointServer) acquireTuner(r *http.Request) int {
+	host, port, _ := net.SplitHostPort(r.RemoteAddr)
+	p, _ := strconv.Atoi(port)
+	for i := 0; i < he.tunerStates.GetTunerCount(); i++ {
+		if he.tunerStates.LockTuner(i, fmt.Sprintf("%08x", i+1), host, p) == nil {
+			return i
+		}
+	}
+	return -1
+}
+
+// handleHealth reports liveness and the number of channels in the lineup.
+func (he *HDHREndpointServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "channels": len(he.lineup(r))}) //nolint:errcheck
 }
 
 // handleLineupStatus handles /lineup_status.json
@@ -244,7 +303,7 @@ func (he *HDHREndpointServer) handleLineupStatus(w http.ResponseWriter, r *http.
 		ScanPossible:   1,
 		Source:         "Cable",
 		SourceList:     []string{"Cable"},
-		NumChannels:    100,
+		NumChannels:    len(he.lineup(r)),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -259,7 +318,7 @@ func (he *HDHREndpointServer) handleDeviceXML(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	discover := he.getDeviceConfig(r.Context())
+	discover := he.getDeviceConfig(r)
 	device := DeviceXML{
 		Xmlns: "urn:schemas-upnp-org:device-1-0",
 		Device: DeviceXMLDevice{
@@ -295,8 +354,8 @@ func (he *HDHREndpointServer) handleTunerList(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	discover := he.getDeviceConfig(r.Context())
-	baseURL := he.getBaseURL()
+	discover := he.getDeviceConfig(r)
+	baseURL := discover.BaseURL
 
 	type tunerInfo struct {
 		Index      int    `json:"Index"`
@@ -387,21 +446,19 @@ func (he *HDHREndpointServer) handleTunerStreamInfo(w http.ResponseWriter, r *ht
 	json.NewEncoder(w).Encode(info) //nolint:errcheck
 }
 
-// UpdateBaseURLFromRequest updates the base URL based on the incoming request
-// This should be called on the first request to set the correct base URL for responses
-func (he *HDHREndpointServer) UpdateBaseURLFromRequest(r *http.Request) string {
-	var scheme string
-	if r.TLS != nil {
-		scheme = "https"
-	} else {
-		scheme = "http"
+// serveHDHREndpoints runs the HDHR HTTP API (discover/lineup/streams) on
+// bindAddr:5004 until ctx is cancelled.
+func serveHDHREndpoints(ctx context.Context, bindAddr string, he *HDHREndpointServer) {
+	addr := net.JoinHostPort(bindAddr, "5004")
+	srv := &http.Server{Addr: addr, Handler: he.Handler()}
+	go func() {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		srv.Shutdown(shutCtx) //nolint:errcheck
+	}()
+	slog.Info("HDHR endpoint server listening", "addr", addr)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		slog.Error("HDHR endpoint server error", "err", err)
 	}
-
-	host := r.Host
-	if host == "" {
-		host = r.Header.Get("Host")
-	}
-
-	baseURL := fmt.Sprintf("%s://%s", scheme, host)
-	return baseURL
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"net/http"
 	"sync"
 	"time"
 )
@@ -16,8 +15,6 @@ type AppProxy struct {
 	codec        *MessageCodec
 	tcpTransport net.Conn
 	tcpMutex     sync.Mutex
-	hdhrServer   *HDHREndpointServer
-	httpServer   *http.Server
 	backendRouter
 }
 
@@ -28,13 +25,6 @@ func NewAppProxy(store *configStore) *AppProxy {
 		backendRouter: backendRouter{
 			name:  "AppProxy",
 			store: store,
-			resolveLocalIP: func(appAddr *net.UDPAddr) string {
-				ip, err := GetLocalIPForConnection(appAddr.IP.String() + ":65001")
-				if err != nil {
-					return "127.0.0.1"
-				}
-				return ip
-			},
 		},
 	}
 }
@@ -54,7 +44,7 @@ func (ap *AppProxy) Run(ctx context.Context, bindAddr, directIP string, store *c
 		if ap.checkTunarr(ctx) {
 			slog.Info("Tunarr backend available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
 		} else {
-			slog.Warn("Tunarr backend not available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
+			slog.Warn("Tunarr backend not available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port, "err", ap.Stats().Tunarr.Err)
 			if cfg.Tunarr.UseTunarrOnly {
 				return fmt.Errorf("tunarr backend required but not available")
 			}
@@ -65,11 +55,8 @@ func (ap *AppProxy) Run(ctx context.Context, bindAddr, directIP string, store *c
 		go ap.watchTunarr(ctx)
 	}
 
-	// Initialize HDHR endpoint server for discovery endpoints
-	ap.hdhrServer = NewHDHREndpointServer(store, ap)
-
-	// Start HTTP server on port 5004 for HDHR discovery endpoints
-	go ap.startHDHRHTTPServer(ctx, bindAddr)
+	// HDHR HTTP API on :5004 (discover, lineup, and Tunarr streams)
+	go serveHDHREndpoints(ctx, bindAddr, NewHDHREndpointServer(store, ap, ap.tunarr))
 
 	if store.Get().LogActiveConnectionsInterval > 0 {
 		go ap.logActiveConnections(ctx, store)
@@ -132,7 +119,8 @@ func (ap *AppProxy) runDirectMode(ctx context.Context, bindAddr string, cfg *Con
 			slog.Debug("Request received from app", "bytes", n, "source", remoteAddr.String())
 
 			// Forward the query to HDHR/Tunarr backend
-			go ap.forwardToBackend(buf[:n], remoteAddr, conn, ctx)
+			// Copy: buf is reused by the next read while this goroutine runs.
+			go ap.forwardToBackend(append([]byte(nil), buf[:n]...), remoteAddr, conn, ctx)
 		}
 	}
 }
@@ -233,6 +221,15 @@ func (ap *AppProxy) onReceivedMessage(msg []byte) {
 	sourcePort := binary.BigEndian.Uint16(msg[4:6])
 	queryData := msg[6:]
 
+	if ap.tunarr != nil {
+		if reply := ap.tunarrDiscoverReply(queryData, net.IP(sourceAddr)); reply != nil {
+			ap.reply(sourceAddr, sourcePort, reply)
+		}
+		if ap.useTunarrOnly {
+			return
+		}
+	}
+
 	// Perform the query
 	ap.queryTuner(queryData, func(replyData []byte) {
 		ap.reply(sourceAddr, sourcePort, replyData)
@@ -313,33 +310,4 @@ func (ap *AppProxy) reply(sourceAddr []byte, sourcePort uint16, replyData []byte
 		slog.Error("Error sending reply", "err", err)
 		ap.tcpTransport = nil
 	}
-}
-
-// startHDHRHTTPServer starts the HTTP server for HDHR endpoints on port 5004
-func (ap *AppProxy) startHDHRHTTPServer(ctx context.Context, bindAddr string) {
-if ap.hdhrServer == nil {
-return
-}
-
-addr := net.JoinHostPort(bindAddr, "5004")
-ap.httpServer = &http.Server{
-Addr:    addr,
-Handler: ap.hdhrServer.Handler(),
-}
-
-slog.Info("HDHR endpoint server listening", "addr", addr)
-
-// Shutdown on context cancellation
-go func() {
-<-ctx.Done()
-if ap.httpServer != nil {
-shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
-ap.httpServer.Shutdown(shutCtx) //nolint:errcheck
-}
-}()
-
-if err := ap.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-slog.Error("HDHR endpoint server error", "err", err)
-}
 }

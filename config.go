@@ -55,6 +55,16 @@ type Config struct {
 		Port          int    `json:"port"`
 		UseTunarrOnly bool   `json:"use_tunarr_only"` // If true, only use Tunarr, ignore HDHR
 		HttpTimeout   int    `json:"http_timeout_seconds"`
+
+		// Emulated HDHR lineup, built from Tunarr's channel API (ported from tunarr-hdhr).
+		ChannelsEndpoint string `json:"channels_endpoint,omitempty"`  // default /api/channels
+		XMLTVEndpoint    string `json:"xmltv_endpoint,omitempty"`     // default /api/xmltv.xml
+		RefreshSeconds   int    `json:"refresh_seconds,omitempty"`    // channel list refresh, default 30
+		ChannelStart     int    `json:"channel_start,omitempty"`      // first guide number when numbering ourselves, default 100
+		UseTunarrNumbers bool   `json:"use_tunarr_numbers,omitempty"` // use Tunarr's channel numbers instead of channel_start
+		BaseURL          string `json:"base_url,omitempty"`           // URL clients use to reach this proxy's :5004; default derived per request
+		StreamMode       string `json:"stream_mode,omitempty"`        // "proxy" (default): pass Tunarr's MPEG-TS through; "mpegts": ffmpeg -c copy from HLS
+		FFmpegPath       string `json:"ffmpeg_path,omitempty"`        // default "ffmpeg"; only used with stream_mode "mpegts"
 	} `json:"tunarr"`
 
 	// Web UI settings (stored in config so credentials persist across restarts)
@@ -133,6 +143,11 @@ func SaveConfigTemplate(filepath string) error {
 	template.Tunarr.Port = 8000
 	template.Tunarr.UseTunarrOnly = false
 	template.Tunarr.HttpTimeout = 5
+	template.Tunarr.ChannelsEndpoint = "/api/channels"
+	template.Tunarr.XMLTVEndpoint = "/api/xmltv.xml"
+	template.Tunarr.RefreshSeconds = 30
+	template.Tunarr.ChannelStart = 100
+	template.Tunarr.StreamMode = "proxy"
 
 	data, err := json.MarshalIndent(template, "", "  ")
 	if err != nil {
@@ -175,6 +190,39 @@ func (c *Config) GetHDHomeRunPort() int {
 		return c.HDHomeRunPort
 	}
 	return HDHomeRunDiscoveryUDPPort
+}
+
+func (c *Config) TunarrChannelsEndpoint() string {
+	return orDefault(c.Tunarr.ChannelsEndpoint, "/api/channels")
+}
+
+func (c *Config) TunarrXMLTVEndpoint() string {
+	return orDefault(c.Tunarr.XMLTVEndpoint, "/api/xmltv.xml")
+}
+
+func (c *Config) TunarrRefreshSeconds() int {
+	if c.Tunarr.RefreshSeconds > 0 {
+		return c.Tunarr.RefreshSeconds
+	}
+	return 30
+}
+
+func (c *Config) TunarrChannelStart() int {
+	if c.Tunarr.ChannelStart > 0 {
+		return c.Tunarr.ChannelStart
+	}
+	return 100
+}
+
+func (c *Config) TunarrFFmpegPath() string {
+	return orDefault(c.Tunarr.FFmpegPath, "ffmpeg")
+}
+
+func orDefault(v, def string) string {
+	if v != "" {
+		return v
+	}
+	return def
 }
 
 func (c *Config) GetTCPPort() int {

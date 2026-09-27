@@ -29,9 +29,6 @@ func NewTunerProxy(store *configStore) *TunerProxy {
 		backendRouter: backendRouter{
 			name:  "TunerProxy",
 			store: store,
-			resolveLocalIP: func(appAddr *net.UDPAddr) string {
-				return appAddr.IP.String()
-			},
 		},
 	}
 }
@@ -50,7 +47,7 @@ func (tp *TunerProxy) Run(ctx context.Context, appProxyHostOrIP string, isDirect
 		if tp.checkTunarr(ctx) {
 			slog.Info("Tunarr backend available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
 		} else {
-			slog.Warn("Tunarr backend not available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port)
+			slog.Warn("Tunarr backend not available", "host", cfg.Tunarr.Host, "port", cfg.Tunarr.Port, "err", tp.Stats().Tunarr.Err)
 			if cfg.Tunarr.UseTunarrOnly {
 				return fmt.Errorf("tunarr backend required but not available")
 			}
@@ -67,6 +64,10 @@ func (tp *TunerProxy) Run(ctx context.Context, appProxyHostOrIP string, isDirect
 
 	if isDirectMode {
 		tp.directHDHRIP = appProxyHostOrIP
+		if tp.tunarr != nil {
+			// Discovery replies point apps at this host's :5004 for the Tunarr lineup.
+			go serveHDHREndpoints(ctx, "", NewHDHREndpointServer(store, tp, tp.tunarr))
+		}
 		return tp.runDirectMode(ctx, cfg)
 	} else {
 		return tp.runTunerProxyMode(ctx, appProxyHostOrIP, cfg)
@@ -130,7 +131,8 @@ func (tp *TunerProxy) runDirectMode(ctx context.Context, cfg *Config) error {
 			slog.Debug("Request received from app (direct mode)", "bytes", n, "source", fmt.Sprintf("%s:%d", ip, port))
 
 			// Forward the query to HDHR or Tunarr backend and reply back
-			go tp.forwardToBackend(buf[:n], remoteAddr, udpConn, ctx)
+			// Copy: buf is reused by the next read while this goroutine runs.
+			go tp.forwardToBackend(append([]byte(nil), buf[:n]...), remoteAddr, udpConn, ctx)
 		}
 	}
 }
