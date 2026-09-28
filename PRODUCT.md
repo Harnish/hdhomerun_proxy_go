@@ -24,6 +24,7 @@ A single static Go binary (Pi-friendly; shipped as release binaries, deb/rpm, an
 - Runs headless under systemd or Docker with `--network host`.
 - Web UI is opt-in (`-webui`), with two tabs: **Status** (live connection counts, backend status, log tail) and **Config** (full config form; saves to the JSON file, debug level and credentials apply live, other changes on restart).
 - TUI (`-tui`) is the terminal equivalent and can run alongside the web UI.
+- With Tunarr enabled, the proxy is itself an HDHomeRun tuner for Tunarr's channels. It answers binary discovery on UDP 65001 and serves the HDHR API on port 5004: `discover.json`, `lineup.json`/`.xml`, `epg.xml` (Tunarr's XMLTV) and `/auto/v<channel>` streams. In hybrid mode, apps see both the Tunarr tuner and the real HDHomeRun; `use_tunarr_only` advertises Tunarr alone. This replaced the standalone tunarr-hdhr bridge.
 
 ## Capabilities and Constraints
 
@@ -32,6 +33,9 @@ A single static Go binary (Pi-friendly; shipped as release binaries, deb/rpm, an
 - Protected by HTTP Basic Auth. Intended for LAN use only, not public internet exposure.
 - Web UI and TUI should show the same live information: connections, backends, and logs.
 - Core proxy is stdlib-only Go. The TUI adds only charmbracelet packages.
+- The emulated Tunarr tuner uses the identity in the `device` config section. Changing `device_id` changes the tuner that media apps see, so saves must never wipe it.
+- Tunarr streams pass Tunarr's MPEG-TS through by default, with no extra dependency. ffmpeg is optional (`stream_mode: "mpegts"`, a `-c copy` remux of HLS) and is not bundled in the Docker image.
+- Each stream takes one of the emulated model's tuners. When all are busy, a new stream gets 503, as on a real device.
 - Known gap (TODO.md): AppProxy supports only one TunerProxy connection at a time.
 
 ## Brand Commitments
@@ -40,7 +44,7 @@ Product name "HDHomeRun Proxy", binary `hdhomerun_proxy`. Credit to @simeoncran'
 
 ## Evidence on Hand
 
-README.md, CONFIG.md, and design specs under `docs/superpowers/specs/`. There are no testimonials, user counts, or benchmarks, and future work must not invent them.
+README.md, CONFIG.md, and design specs under `docs/superpowers/specs/`. The discovery reply matches a capture from a real HDFX-4K byte for byte, and `hdhr_discovery_test.go` pins it. The Tunarr integration has been tested against a stand-in Tunarr server, not a live one, and discovery has not yet been tried from the official HDHomeRun app or Plex. There are no testimonials, user counts, or benchmarks, and future work must not invent them.
 
 ## Product Principles
 
