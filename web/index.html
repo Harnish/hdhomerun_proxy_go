@@ -36,8 +36,10 @@ td{padding:2px 6px;vertical-align:top;word-break:break-word}
 .section-hdr{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#7c6af7;border-bottom:1px solid #2a2a2a;padding-bottom:4px;margin:14px 0 6px}
 .field-row{display:flex;align-items:center;margin:5px 0;gap:8px}
 .field-row label{color:#888;width:260px;flex-shrink:0;font-size:12px}
-.field-row input[type=text],.field-row input[type=number],.field-row input[type=password]{flex:1;background:#1e1e1e;border:1px solid #333;border-radius:3px;padding:4px 7px;color:#ccc;font-family:monospace;font-size:12px}
+.field-row input[type=text],.field-row input[type=number],.field-row input[type=password],.field-row select{flex:1;background:#1e1e1e;border:1px solid #333;border-radius:3px;padding:4px 7px;color:#ccc;font-family:monospace;font-size:12px}
+.field-row input[type=text],.field-row input[type=number],.field-row input[type=password],.field-row select{min-width:0}
 .field-row input[type=checkbox]{accent-color:#7c6af7;width:14px;height:14px}
+@media (max-width:600px){.field-row{flex-wrap:wrap;gap:4px}.field-row label{width:100%}.field-row input[type=text],.field-row input[type=number],.field-row input[type=password],.field-row select{flex-basis:100%}}
 .restart{color:#c67c00;font-size:10px;margin-left:4px}
 .no-file-banner{background:#2a1e00;border:1px solid #c67c00;border-radius:4px;color:#c67c00;padding:8px 12px;margin-bottom:12px;font-size:12px;display:none}
 .save-btn{background:#7c6af7;color:#fff;border:none;padding:8px 20px;border-radius:4px;cursor:pointer;font-family:monospace;font-size:12px;margin-top:14px}
@@ -117,13 +119,26 @@ td{padding:2px 6px;vertical-align:top;word-break:break-word}
     <div class="field-row"><label>direct_hdhomerun_ip</label><input type="text" id="f-tuner_direct_hdhomerun_ip"></div>
 
     <div class="section-hdr">Tunarr
-      <span class="restart">all fields require restart</span>
+      <span class="restart">restart required unless marked</span>
     </div>
     <div class="field-row"><label>enabled</label><input type="checkbox" id="f-tunarr_enabled"></div>
     <div class="field-row"><label>host</label><input type="text" id="f-tunarr_host"></div>
-    <div class="field-row"><label>port</label><input type="number" id="f-tunarr_port"></div>
+    <div class="field-row"><label>port</label><input type="number" id="f-tunarr_port" placeholder="8000"></div>
     <div class="field-row"><label>use_tunarr_only</label><input type="checkbox" id="f-tunarr_use_tunarr_only"></div>
-    <div class="field-row"><label>http_timeout_seconds</label><input type="number" id="f-tunarr_http_timeout_seconds"></div>
+    <div class="field-row"><label>http_timeout_seconds</label><input type="number" id="f-tunarr_http_timeout_seconds" placeholder="5"></div>
+    <div class="field-row"><label>refresh_seconds</label><input type="number" id="f-tunarr_refresh_seconds" placeholder="30"></div>
+    <div class="field-row"><label>channels_endpoint <span class="restart">next refresh</span></label><input type="text" id="f-tunarr_channels_endpoint" placeholder="/api/channels"></div>
+    <div class="field-row"><label>channel_start <span class="restart">next refresh</span></label><input type="number" id="f-tunarr_channel_start" placeholder="100"></div>
+    <div class="field-row"><label>use_tunarr_numbers <span class="restart">next refresh</span></label><input type="checkbox" id="f-tunarr_use_tunarr_numbers"></div>
+    <div class="field-row"><label>xmltv_endpoint <span class="restart">live reload</span></label><input type="text" id="f-tunarr_xmltv_endpoint" placeholder="/api/xmltv.xml"></div>
+    <div class="field-row"><label>base_url <span class="restart">live reload</span></label><input type="text" id="f-tunarr_base_url" placeholder="auto (this host, port 5004)"></div>
+    <div class="field-row"><label>stream_mode <span class="restart">live reload</span></label>
+      <select id="f-tunarr_stream_mode">
+        <option value="proxy">proxy: pass Tunarr's MPEG-TS through</option>
+        <option value="mpegts">mpegts: ffmpeg remux from HLS</option>
+      </select>
+    </div>
+    <div class="field-row"><label>ffmpeg_path <span class="restart">live reload</span></label><input type="text" id="f-tunarr_ffmpeg_path" placeholder="ffmpeg"></div>
 
     <div class="section-hdr">Web UI
       <span class="restart">addr requires restart; credentials apply immediately</span>
@@ -318,9 +333,18 @@ function loadConfig() {
     var tunarr = c.tunarr || {};
     document.getElementById('f-tunarr_enabled').checked = !!tunarr.enabled;
     document.getElementById('f-tunarr_host').value = tunarr.host || '';
-    document.getElementById('f-tunarr_port').value = tunarr.port || 0;
+    // Unset (0/empty) values stay blank so the placeholder shows the default.
+    document.getElementById('f-tunarr_port').value = tunarr.port || '';
     document.getElementById('f-tunarr_use_tunarr_only').checked = !!tunarr.use_tunarr_only;
-    document.getElementById('f-tunarr_http_timeout_seconds').value = tunarr.http_timeout_seconds || 0;
+    document.getElementById('f-tunarr_http_timeout_seconds').value = tunarr.http_timeout_seconds || '';
+    document.getElementById('f-tunarr_refresh_seconds').value = tunarr.refresh_seconds || '';
+    document.getElementById('f-tunarr_channels_endpoint').value = tunarr.channels_endpoint || '';
+    document.getElementById('f-tunarr_channel_start').value = tunarr.channel_start || '';
+    document.getElementById('f-tunarr_use_tunarr_numbers').checked = !!tunarr.use_tunarr_numbers;
+    document.getElementById('f-tunarr_xmltv_endpoint').value = tunarr.xmltv_endpoint || '';
+    document.getElementById('f-tunarr_base_url').value = tunarr.base_url || '';
+    document.getElementById('f-tunarr_stream_mode').value = tunarr.stream_mode === 'mpegts' ? 'mpegts' : 'proxy';
+    document.getElementById('f-tunarr_ffmpeg_path').value = tunarr.ffmpeg_path || '';
     var webui = c.webui || {};
     document.getElementById('f-webui_addr').value = webui.addr || '';
     document.getElementById('f-webui_user').value = webui.user || '';
@@ -353,7 +377,16 @@ function saveConfig() {
       host: iv('f-tunarr_host'),
       port: parseInt(iv('f-tunarr_port')) || 0,
       use_tunarr_only: ic('f-tunarr_use_tunarr_only'),
-      http_timeout_seconds: parseInt(iv('f-tunarr_http_timeout_seconds')) || 0
+      http_timeout_seconds: parseInt(iv('f-tunarr_http_timeout_seconds')) || 0,
+      // Blank/0 means "use the default"; the server applies it.
+      refresh_seconds: parseInt(iv('f-tunarr_refresh_seconds')) || 0,
+      channels_endpoint: iv('f-tunarr_channels_endpoint').trim(),
+      channel_start: parseInt(iv('f-tunarr_channel_start')) || 0,
+      use_tunarr_numbers: ic('f-tunarr_use_tunarr_numbers'),
+      xmltv_endpoint: iv('f-tunarr_xmltv_endpoint').trim(),
+      base_url: iv('f-tunarr_base_url').trim(),
+      stream_mode: iv('f-tunarr_stream_mode'),
+      ffmpeg_path: iv('f-tunarr_ffmpeg_path').trim()
     },
     webui: {
       addr: iv('f-webui_addr'),
