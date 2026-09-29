@@ -18,7 +18,8 @@ WorkingDirectory=/opt/hdhomerun-proxy
 #ExecStart=/opt/hdhomerun-proxy/hdhomerun_proxy -config /opt/hdhomerun-proxy/hdhomerun_proxy.json tuner
 #
 # App proxy with web UI:
-#ExecStart=/opt/hdhomerun-proxy/hdhomerun_proxy -config /opt/hdhomerun-proxy/hdhomerun_proxy.json -webui :8080 -webui-user admin -webui-pass changeme app
+#ExecStart=/opt/hdhomerun-proxy/hdhomerun_proxy -config /opt/hdhomerun-proxy/hdhomerun_proxy.json -webui :8080 app
+# (credentials are generated on first start and saved to the config: sudo jq -r .webui.pass /opt/hdhomerun-proxy/hdhomerun_proxy.json)
 #
 # Uncomment exactly one ExecStart line above.
 ExecStart=/opt/hdhomerun-proxy/hdhomerun_proxy -config /opt/hdhomerun-proxy/hdhomerun_proxy.json app

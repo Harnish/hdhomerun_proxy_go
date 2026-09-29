@@ -94,13 +94,13 @@ With Tunarr enabled, the proxy itself acts as an HDHomeRun tuner for Tunarr's ch
 {
   "webui": {
     "addr": ":8080",      // Bind address; empty disables the web UI
-    "user": "admin",      // HTTP Basic Auth username
-    "pass": "secret"      // HTTP Basic Auth password
+    "user": "admin",      // HTTP Basic Auth username; defaults to "admin" if empty
+    "pass": "secret"      // HTTP Basic Auth password; generated at startup if empty
   }
 }
 ```
 
-When the config file contains `webui` settings, the proxy starts the web UI automatically without any `-webui` flags. Credentials are read on each request, so changing them via the Config tab takes effect immediately without a restart.
+When the config file contains `webui` settings, the proxy starts the web UI automatically without any `-webui` flags. If `user` or `pass` is empty, the proxy fills it in at startup and saves it to the config file (the password is not logged). Credentials are read on each request, so changing them via the Config tab takes effect immediately without a restart.
 
 ## Priority Order
 

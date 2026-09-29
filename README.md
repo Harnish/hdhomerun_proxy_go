@@ -77,8 +77,8 @@ Multi-arch images (`linux/amd64`, `linux/arm64`) are published to GitHub Contain
 | `-template` | Write a template config file and exit |
 | `-tui` | Enable terminal UI dashboard |
 | `-webui <addr>` | Enable web UI (e.g. `:8080`) |
-| `-webui-user <user>` | Basic Auth username (required with `-webui` when config has no webui) |
-| `-webui-pass <pass>` | Basic Auth password (required with `-webui` when config has no webui) |
+| `-webui-user <user>` | Basic Auth username (default `admin`) |
+| `-webui-pass <pass>` | Basic Auth password (generated and saved to config if unset) |
 | `-webui-reset` | Force `-webui` flags to overwrite config file webui settings |
 
 ### App Proxy
@@ -122,22 +122,18 @@ See [CONFIG.md](CONFIG.md) for all options.
 Start the embedded web interface alongside the proxy:
 
 ```bash
-./hdhomerun_proxy -config hdhomerun_proxy.json -webui :8080 -webui-user admin -webui-pass secret app
+./hdhomerun_proxy -config hdhomerun_proxy.json -webui :8080 app
 ```
 
-On first run with a config file, the credentials are saved to the file. On subsequent runs, just use `-config` — no `-webui` flags needed:
+If the config has no web UI user or password, the proxy generates them at startup (user `admin`, random password), and saves them to the config file. The password is not logged; read it from the config with `jq -r .webui.pass hdhomerun_proxy.json`. Without `-config` there is nowhere to save it, so it is logged instead and changes on every start. On later runs, `-config` alone is enough.
 
-```bash
-./hdhomerun_proxy -config hdhomerun_proxy.json app
-```
-
-To change the bind address or credentials, use `-webui-reset` to force the CLI flags to take effect:
+To pick your own credentials, set them in the Config tab, pass `-webui-user`/`-webui-pass` on first run, or use `-webui-reset` to override the saved ones:
 
 ```bash
 ./hdhomerun_proxy -config hdhomerun_proxy.json -webui-reset -webui :9090 -webui-user admin -webui-pass newpass app
 ```
 
-Open `http://<host>:8080` in a browser and authenticate with the credentials you provided.
+Open `http://<host>:8080` in a browser and log in with those credentials.
 
 **Status tab** — live connection counters, active backends, and a scrolling log (last 200 entries, with DEBUG filter toggle). Refreshes every second.
 
@@ -217,16 +213,14 @@ sudo systemctl disable hdhomerun-proxy   # remove from auto-start
 
 ### Example: App Proxy with Web UI on Pi
 
-`/opt/hdhomerun-proxy/hdhomerun_proxy.json` (credentials stored in config):
+`/opt/hdhomerun-proxy/hdhomerun_proxy.json` (credentials are generated and added on first start):
 ```json
 {
   "app": {
     "bind_address": "0.0.0.0"
   },
   "webui": {
-    "addr": ":8080",
-    "user": "admin",
-    "pass": "changeme"
+    "addr": ":8080"
   }
 }
 ```
@@ -238,16 +232,7 @@ ExecStart=/opt/hdhomerun-proxy/hdhomerun_proxy \
   app
 ```
 
-Then `sudo systemctl restart hdhomerun-proxy` and open `http://<pi-ip>:8080`.
-
-Alternatively, set the credentials on first run and let them be saved automatically:
-```bash
-/opt/hdhomerun-proxy/hdhomerun_proxy \
-  -config /opt/hdhomerun-proxy/hdhomerun_proxy.json \
-  -webui :8080 -webui-user admin -webui-pass changeme \
-  app
-```
-Stop it (Ctrl+C) once it starts — the credentials are now in the config file.
+Then `sudo systemctl restart hdhomerun-proxy`, get the generated password with `sudo jq -r .webui.pass /opt/hdhomerun-proxy/hdhomerun_proxy.json`, and open `http://<pi-ip>:8080`.
 
 ---
 

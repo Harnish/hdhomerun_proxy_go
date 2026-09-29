@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -26,8 +27,8 @@ func main() {
 	var webuiAddr, webuiUser, webuiPass string
 	var webuiReset bool
 	flag.StringVar(&webuiAddr, "webui", "", "Bind address for web UI (e.g. :8080)")
-	flag.StringVar(&webuiUser, "webui-user", "", "HTTP Basic Auth username (required with -webui when config has no webui)")
-	flag.StringVar(&webuiPass, "webui-pass", "", "HTTP Basic Auth password (required with -webui when config has no webui)")
+	flag.StringVar(&webuiUser, "webui-user", "", "HTTP Basic Auth username (default admin)")
+	flag.StringVar(&webuiPass, "webui-pass", "", "HTTP Basic Auth password (generated and saved to config if unset)")
 	flag.BoolVar(&webuiReset, "webui-reset", false, "Force -webui/-webui-user/-webui-pass to overwrite config file webui settings")
 	flag.Parse()
 	args := flag.Args()
@@ -64,20 +65,40 @@ func main() {
 
 	// Resolve webui settings: config takes priority unless -webui-reset or config has no webui.
 	// When CLI values are used, they are merged into cfg and persisted to the config file.
-	var mergedWebUIFromCLI bool
+	var webuiChanged bool
 	if cfg.WebUI.Addr != "" && !webuiReset {
 		if webuiAddr != "" {
 			slog.Warn("-webui flags ignored; webui settings loaded from config (use -webui-reset to override)")
 		}
 	} else if webuiAddr != "" {
-		if webuiUser == "" || webuiPass == "" {
-			fmt.Fprintf(os.Stderr, "Error: -webui-user and -webui-pass are required when -webui is set\n")
-			os.Exit(1)
-		}
 		cfg.WebUI.Addr = webuiAddr
-		cfg.WebUI.User = webuiUser
-		cfg.WebUI.Pass = webuiPass
-		mergedWebUIFromCLI = true
+		if webuiUser != "" {
+			cfg.WebUI.User = webuiUser
+		}
+		if webuiPass != "" {
+			cfg.WebUI.Pass = webuiPass
+		}
+		webuiChanged = true
+	}
+
+	// Missing credentials are generated once and persisted, so nothing secret
+	// has to live in the systemd unit or on the command line.
+	if cfg.WebUI.Addr != "" && (cfg.WebUI.User == "" || cfg.WebUI.Pass == "") {
+		if cfg.WebUI.User == "" {
+			cfg.WebUI.User = "admin"
+		}
+		if cfg.WebUI.Pass == "" {
+			cfg.WebUI.Pass = rand.Text()
+		}
+		webuiChanged = true
+		if configFile != "" {
+			slog.Warn("Generated web UI credentials; password saved to config file",
+				"user", cfg.WebUI.User, "config", configFile)
+		} else {
+			// Not persisted anywhere, so logging is the only way to recover it.
+			slog.Warn("Generated web UI credentials; not saved (no -config), regenerated each start",
+				"user", cfg.WebUI.User, "pass", cfg.WebUI.Pass)
+		}
 	}
 
 	store := newConfigStore(cfg, configFile)
@@ -89,7 +110,7 @@ func main() {
 	}
 
 	// Persist webui CLI values to the config file so they survive restarts.
-	if mergedWebUIFromCLI && configFile != "" {
+	if webuiChanged && configFile != "" {
 		if err := store.Set(cfg); err != nil {
 			slog.Warn("Could not persist webui settings to config", "err", err)
 		}
@@ -124,10 +145,10 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  -template\n\tGenerate a template config file and exit\n")
 	fmt.Fprintf(os.Stderr, "  -tui\n\tEnable terminal UI dashboard\n")
 	fmt.Fprintf(os.Stderr, "  -webui string\n\tBind address for web UI (e.g. :8080)\n")
-	fmt.Fprintf(os.Stderr, "  -webui-user string\n\tHTTP Basic Auth username (required with -webui when config has no webui)\n")
-	fmt.Fprintf(os.Stderr, "  -webui-pass string\n\tHTTP Basic Auth password (required with -webui when config has no webui)\n")
+	fmt.Fprintf(os.Stderr, "  -webui-user string\n\tHTTP Basic Auth username (default admin)\n")
+	fmt.Fprintf(os.Stderr, "  -webui-pass string\n\tHTTP Basic Auth password (generated and saved to config if unset)\n")
 	fmt.Fprintf(os.Stderr, "  -webui-reset\n\tForce CLI -webui flags to override config file webui settings\n")
-	fmt.Fprintf(os.Stderr, "\nNote: Webui credentials are stored in the config file after first use.\n")
+	fmt.Fprintf(os.Stderr, "\nNote: Missing webui credentials are generated at startup and saved to the config file.\n")
 	fmt.Fprintf(os.Stderr, "      If the config has webui settings, -webui flags are ignored unless -webui-reset is passed.\n")
 	fmt.Fprintf(os.Stderr, "Generate template with: %s -template\n", os.Args[0])
 }
