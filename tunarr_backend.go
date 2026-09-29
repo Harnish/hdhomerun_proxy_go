@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -18,18 +19,30 @@ type TunarrBackend struct {
 }
 
 // NewTunarrBackend creates a new Tunarr backend client
+// host is a bare hostname (port defaults to 8000) or a URL such as
+// "https://tunarr.example" (port defaults to the scheme's).
 func NewTunarrBackend(host string, port int, timeout int) *TunarrBackend {
-	if port == 0 {
-		port = 8000
-	}
 	if timeout == 0 {
 		timeout = 5
+	}
+
+	var baseURL string
+	if strings.Contains(host, "://") {
+		baseURL = strings.TrimRight(host, "/")
+		if port != 0 {
+			baseURL = fmt.Sprintf("%s:%d", baseURL, port)
+		}
+	} else {
+		if port == 0 {
+			port = 8000
+		}
+		baseURL = fmt.Sprintf("http://%s:%d", host, port)
 	}
 
 	return &TunarrBackend{
 		host:    host,
 		port:    port,
-		baseURL: fmt.Sprintf("http://%s:%d", host, port),
+		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
 		},

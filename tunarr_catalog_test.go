@@ -188,3 +188,21 @@ func TestTunarrDiscoverReply(t *testing.T) {
 		t.Error("non-discover query should get no reply")
 	}
 }
+
+func TestNewTunarrBackendBaseURL(t *testing.T) {
+	for _, tc := range []struct {
+		host string
+		port int
+		want string
+	}{
+		{"tunarr.lan", 0, "http://tunarr.lan:8000"},
+		{"tunarr.lan", 9000, "http://tunarr.lan:9000"},
+		{"http://tunarr.lan", 0, "http://tunarr.lan"},
+		{"https://tunarr.lan/", 0, "https://tunarr.lan"},
+		{"https://tunarr.lan", 8443, "https://tunarr.lan:8443"},
+	} {
+		if got := NewTunarrBackend(tc.host, tc.port, 0).baseURL; got != tc.want {
+			t.Errorf("NewTunarrBackend(%q, %d).baseURL = %q, want %q", tc.host, tc.port, got, tc.want)
+		}
+	}
+}
